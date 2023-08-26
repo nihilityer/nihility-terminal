@@ -3,7 +3,7 @@ syntax = "proto3";
 package test;
 
 service Test {
-  rpc testGrpc (TestRequest) returns (TestResponse) {}
+  rpc test_grpc (TestRequest) returns (TestResponse) {}
 }
 
 message TestRequest {

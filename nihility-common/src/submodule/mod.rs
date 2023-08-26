@@ -1,5 +1,4 @@
-pub mod config;
-pub mod notify;
+pub mod info;
 
 pub mod test {
     tonic::include_proto!("test");

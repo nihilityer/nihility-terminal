@@ -1,12 +1,11 @@
 use std::error::Error;
-use tokio::sync::oneshot;
-use tokio::sync::oneshot::Sender;
 
+extern crate nihility_common;
 mod exchange_actuator;
-mod submodule;
 
-pub use exchange_actuator::{config::NetConfig, notify::Broadcaster};
-pub use submodule::info::SubmoduleInfo;
+pub use exchange_actuator::{config::NetConfig, notify::{Broadcaster, GrpcServer}};
+pub use nihility_common::submodule::info::SubmoduleInfo;
+use tracing::Level;
 
 pub struct SummaryConfig {
     pub net_cfg: NetConfig,
@@ -14,14 +13,14 @@ pub struct SummaryConfig {
 
 pub struct NihilityTerminal {
     submodule_vec: Vec<SubmoduleInfo>,
+    grpc_server: GrpcServer,
     broadcaster: Broadcaster,
-    broadcaster_rc: Sender<String>,
 }
 
 impl Default for SummaryConfig {
     fn default() -> Self {
         SummaryConfig {
-            net_cfg: NetConfig::default(),
+            net_cfg: NetConfig::default().unwrap(),
         }
     }
 }
@@ -31,6 +30,7 @@ impl NihilityTerminal {
     pub async fn init(summary_config: SummaryConfig) -> Result<Self, Box<dyn Error>> {
         let subscriber = tracing_subscriber::fmt()
             .compact()
+            .with_max_level(Level::DEBUG)
             .with_file(true)
             .with_line_number(true)
             .with_thread_ids(true)
@@ -40,14 +40,14 @@ impl NihilityTerminal {
 
         tracing::info!("日志初始化完成！");
 
-        let (rc, mut rx) = oneshot::channel();
+        let grpc_server = GrpcServer::init(&summary_config.net_cfg)?;
 
-        let broadcaster = Broadcaster::new(summary_config.net_cfg, rx).await?;
+        let broadcaster = Broadcaster::init(&summary_config.net_cfg).await?;
 
         Ok(NihilityTerminal {
             submodule_vec: Vec::new(),
+            grpc_server,
             broadcaster,
-            broadcaster_rc: rc
         })
     }
 
@@ -55,9 +55,12 @@ impl NihilityTerminal {
         tracing::info!("开始运行");
 
         let broadcaster_future = self.broadcaster.start();
-        self.broadcaster_rc.send("test".to_string())?;
+        let grpc_server_future = self.grpc_server.start();
 
-        tokio::join!(broadcaster_future);
+        tokio::try_join!(
+            broadcaster_future,
+            grpc_server_future,
+        )?;
 
         Ok(())
     }
