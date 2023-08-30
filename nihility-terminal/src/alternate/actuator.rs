@@ -3,12 +3,20 @@ use tokio::net::UdpSocket;
 use tokio::time;
 use tokio::time::Duration;
 use tonic::transport::{server::Router, Server};
+use tokio::sync::mpsc::{Receiver, Sender};
 
-use crate::alternate::config::NetConfig;
-use crate::alternate::achieve::{
-    ModuleInfoImpl,
-    InstructImpl,
-    ManipulateImpl,
+use crate::alternate::{
+    config::NetConfig,
+    implement::{
+        ModuleInfoImpl,
+        InstructImpl,
+        ManipulateImpl,
+    },
+    module::{
+        Module,
+        InstructEntity,
+        ManipulateEntity,
+    }
 };
 
 use nihility_common::{
@@ -24,6 +32,20 @@ pub struct Broadcaster {
     udp_socket: UdpSocket,
     grpc_addr: String,
     broadcast_addr: String,
+}
+
+pub struct GrpcServer {
+    grpc_server_router: Router,
+    grpc_server_addr: String,
+}
+
+pub struct ModuleManager {
+    module_list: Vec<Module>,
+    module_receiver: Receiver<Module>,
+    instruct_receiver: Receiver<InstructEntity>,
+    manipulate_receiver: Receiver<ManipulateEntity>,
+    instruct_sender_list: Vec<Sender<InstructEntity>>,
+    manipulate_sender_list: Vec<Sender<ManipulateEntity>>,
 }
 
 impl Broadcaster {
@@ -53,17 +75,16 @@ impl Broadcaster {
 
 }
 
-pub struct GrpcServer {
-    grpc_server_router: Router,
-    grpc_server_addr: String,
-}
-
 impl GrpcServer {
-    pub fn init(net_cfg: &NetConfig) -> Result<Self, Box<dyn Error>> {
+    pub fn init(net_cfg: &NetConfig,
+                module_sender: Sender<Module>,
+                instruct_sender: Sender<InstructEntity>,
+                manipulate_sender: Sender<ManipulateEntity>,
+    ) -> Result<Self, Box<dyn Error>> {
         let router = Server::builder()
-            .add_service(ModuleInfoServer::new(ModuleInfoImpl::default()))
-            .add_service(InstructServer::new(InstructImpl::default()))
-            .add_service(ManipulateServer::new(ManipulateImpl::default()));
+            .add_service(ModuleInfoServer::new(ModuleInfoImpl::init(module_sender)?))
+            .add_service(InstructServer::new(InstructImpl::init(instruct_sender)?))
+            .add_service(ManipulateServer::new(ManipulateImpl::init(manipulate_sender)?));
 
         Ok(GrpcServer {
             grpc_server_router: router,
@@ -76,5 +97,21 @@ impl GrpcServer {
         self.grpc_server_router
             .serve(self.grpc_server_addr.parse().unwrap()).await?;
         Ok(())
+    }
+}
+
+impl ModuleManager {
+    pub fn init(module_receiver: Receiver<Module>,
+                instruct_receiver: Receiver<InstructEntity>,
+                manipulate_receiver: Receiver<ManipulateEntity>
+    ) -> Result<Self, Box<dyn Error>> {
+        Ok(ModuleManager {
+            module_list: Vec::new(),
+            module_receiver,
+            instruct_receiver,
+            manipulate_receiver,
+            instruct_sender_list: Vec::new(),
+            manipulate_sender_list: Vec::new(),
+        })
     }
 }

@@ -2,14 +2,20 @@ syntax = "proto3";
 
 package instruct;
 
+enum InstructType {
+  DEFAULT_TYPE = 0;
+  SPECIAL_TYPE = 1;
+}
+
 service Instruct {
-  rpc test_grpc (InstructReq) returns (InstructResp) {}
+  rpc send_instruct (InstructReq) returns (InstructResp) {}
 }
 
 message InstructReq {
-  string req = 1;
+  InstructType instruct_type = 1;
+  repeated string message = 2;
 }
 
 message InstructResp {
-  string resp = 1;
+  bool status = 1;
 }

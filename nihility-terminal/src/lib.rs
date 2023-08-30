@@ -1,21 +1,28 @@
 use std::error::Error;
+use tokio::sync::mpsc;
 
 extern crate nihility_common;
 mod alternate;
 
 pub use alternate::{
     config::NetConfig,
-    actuator::{Broadcaster, GrpcServer},
-    info::ModuleInfo,
+    actuator::{Broadcaster, GrpcServer, ModuleManager},
+    module::{
+        Module,
+        InstructEntity,
+        ManipulateEntity,
+    },
 };
 use tracing::Level;
+
+const CHANNEL_BUFFER:usize = 10;
 
 pub struct SummaryConfig {
     pub net_cfg: NetConfig,
 }
 
 pub struct NihilityTerminal {
-    submodule_vec: Vec<ModuleInfo>,
+    module_manager: ModuleManager,
     grpc_server: GrpcServer,
     broadcaster: Broadcaster,
 }
@@ -42,13 +49,17 @@ impl NihilityTerminal {
         tracing::subscriber::set_global_default(subscriber)?;
 
         tracing::info!("日志初始化完成！");
-
-        let grpc_server = GrpcServer::init(&summary_config.net_cfg)?;
+        let (module_sender, module_receiver) = mpsc::channel::<Module>(CHANNEL_BUFFER);
+        let (instruct_server_sender, instruct_server_receiver) = mpsc::channel::<InstructEntity>(CHANNEL_BUFFER);
+        let (manipulate_server_sender, manipulate_server_receiver) = mpsc::channel::<ManipulateEntity>(CHANNEL_BUFFER);
 
         let broadcaster = Broadcaster::init(&summary_config.net_cfg).await?;
+        let grpc_server = GrpcServer::init(&summary_config.net_cfg, module_sender, instruct_server_sender, manipulate_server_sender)?;
+        let module_manager = ModuleManager::init(module_receiver, instruct_server_receiver, manipulate_server_receiver, )?;
+
 
         Ok(NihilityTerminal {
-            submodule_vec: Vec::new(),
+            module_manager,
             grpc_server,
             broadcaster,
         })
