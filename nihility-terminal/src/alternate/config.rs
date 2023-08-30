@@ -18,7 +18,7 @@ impl NetConfig {
         grpc_ip.push(':');
         grpc_ip.push_str(&*grpc_port);
 
-        let mut broadcast_addr = "255.255.255.255:".to_string();
+        let mut broadcast_addr = "253.255.255.255:".to_string();
         broadcast_addr.push_str(&*broadcast_port);
 
         Ok(NetConfig{

@@ -1,10 +1,13 @@
 use std::error::Error;
 
 extern crate nihility_common;
-mod exchange_actuator;
+mod alternate;
 
-pub use exchange_actuator::{config::NetConfig, notify::{Broadcaster, GrpcServer}};
-pub use nihility_common::submodule::info::SubmoduleInfo;
+pub use alternate::{
+    config::NetConfig,
+    actuator::{Broadcaster, GrpcServer},
+    info::ModuleInfo,
+};
 use tracing::Level;
 
 pub struct SummaryConfig {
@@ -12,7 +15,7 @@ pub struct SummaryConfig {
 }
 
 pub struct NihilityTerminal {
-    submodule_vec: Vec<SubmoduleInfo>,
+    submodule_vec: Vec<ModuleInfo>,
     grpc_server: GrpcServer,
     broadcaster: Broadcaster,
 }
@@ -60,7 +63,7 @@ impl NihilityTerminal {
         tokio::try_join!(
             broadcaster_future,
             grpc_server_future,
-        )?;
+        );
 
         Ok(())
     }

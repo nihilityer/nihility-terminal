@@ -1,16 +1,11 @@
-pub mod submodule;
-
-pub fn add(left: usize, right: usize) -> usize {
-    left + right
+pub mod manipulate {
+    tonic::include_proto!("manipulate");
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+pub mod instruct {
+    tonic::include_proto!("instruct");
+}
 
-    #[test]
-    fn it_works() {
-        let result = add(2, 2);
-        assert_eq!(result, 4);
-    }
+pub mod module_info {
+    tonic::include_proto!("module_info");
 }

@@ -1,0 +1,16 @@
+syntax = "proto3";
+
+package module_info;
+
+service ModuleInfo {
+  rpc register (ModuleInfoReq) returns (ModuleInfoResp) {}
+}
+
+message ModuleInfoReq {
+  string name = 1;
+  string grpc_addr = 2;
+}
+
+message ModuleInfoResp {
+  bool success = 1;
+}

@@ -1,0 +1,15 @@
+syntax = "proto3";
+
+package manipulate;
+
+service Manipulate {
+  rpc test_grpc (ManipulateReq) returns (ManipulateResp) {}
+}
+
+message ManipulateReq {
+  string req = 1;
+}
+
+message ManipulateResp {
+  string resp = 1;
+}

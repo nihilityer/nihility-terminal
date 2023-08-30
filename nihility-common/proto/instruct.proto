@@ -1,0 +1,15 @@
+syntax = "proto3";
+
+package instruct;
+
+service Instruct {
+  rpc test_grpc (InstructReq) returns (InstructResp) {}
+}
+
+message InstructReq {
+  string req = 1;
+}
+
+message InstructResp {
+  string resp = 1;
+}
