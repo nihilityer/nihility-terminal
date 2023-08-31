@@ -6,7 +6,7 @@ mod alternate;
 
 pub use alternate::{
     config::NetConfig,
-    actuator::{Broadcaster, GrpcServer, ModuleManager},
+    actuator::{Multicaster, GrpcServer, ModuleManager},
     module::{
         Module,
         InstructEntity,
@@ -24,7 +24,7 @@ pub struct SummaryConfig {
 pub struct NihilityTerminal {
     module_manager: ModuleManager,
     grpc_server: GrpcServer,
-    broadcaster: Broadcaster,
+    broadcaster: Multicaster,
 }
 
 impl Default for SummaryConfig {
@@ -53,7 +53,7 @@ impl NihilityTerminal {
         let (instruct_server_sender, instruct_server_receiver) = mpsc::channel::<InstructEntity>(CHANNEL_BUFFER);
         let (manipulate_server_sender, manipulate_server_receiver) = mpsc::channel::<ManipulateEntity>(CHANNEL_BUFFER);
 
-        let broadcaster = Broadcaster::init(&summary_config.net_cfg).await?;
+        let broadcaster = Multicaster::init(&summary_config.net_cfg).await?;
         let grpc_server = GrpcServer::init(&summary_config.net_cfg, module_sender, instruct_server_sender, manipulate_server_sender)?;
         let module_manager = ModuleManager::init(module_receiver, instruct_server_receiver, manipulate_server_receiver, )?;
 
