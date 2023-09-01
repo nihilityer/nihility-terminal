@@ -1,33 +1,37 @@
 use std::error::Error;
 use std::net::Ipv4Addr;
-use tokio::net::UdpSocket;
+use std::sync::{Arc, Mutex};
+
 use tokio::time;
-use tokio::time::Duration;
-use tonic::transport::{server::Router, Server};
+use tokio::net::UdpSocket;
 use tokio::sync::mpsc::{Receiver, Sender};
+use tokio::sync::mpsc::error::TryRecvError;
+use tokio::time::Duration;
+use tonic::transport::{Server, server::Router};
+
+use nihility_common::{
+    instruct::instruct_server::InstructServer,
+    manipulate::manipulate_server::ManipulateServer,
+    module_info::module_info_server::ModuleInfoServer,
+};
 
 use crate::alternate::{
     config::NetConfig,
     implement::{
-        ModuleInfoImpl,
         InstructImpl,
         ManipulateImpl,
+        ModuleInfoImpl,
     },
     module::{
-        Module,
         InstructEntity,
         ManipulateEntity,
+        Module,
     }
-};
-
-use nihility_common::{
-    module_info::module_info_server::ModuleInfoServer,
-    instruct::instruct_server::InstructServer,
-    manipulate::manipulate_server::ManipulateServer,
 };
 
 // 发送组播播消息的间隔时间，单位：秒
 const MULTICAST_INTERVAL:u64 = 10;
+const MANAGER_INTERVAL:u64 = 2;
 
 pub struct Multicaster {
     udp_socket: UdpSocket,
@@ -45,8 +49,6 @@ pub struct ModuleManager {
     module_receiver: Receiver<Module>,
     instruct_receiver: Receiver<InstructEntity>,
     manipulate_receiver: Receiver<ManipulateEntity>,
-    instruct_sender_list: Vec<Sender<InstructEntity>>,
-    manipulate_sender_list: Vec<Sender<ManipulateEntity>>,
 }
 
 impl Multicaster {
@@ -109,8 +111,63 @@ impl ModuleManager {
             module_receiver,
             instruct_receiver,
             manipulate_receiver,
-            instruct_sender_list: Vec::new(),
-            manipulate_sender_list: Vec::new(),
         })
+    }
+
+    pub async fn start(mut self) -> Result<(), Box<dyn Error>> {
+        tracing::info!("ModuleManager start!");
+        loop {
+            time::sleep(Duration::from_secs(MANAGER_INTERVAL)).await;
+            match self.module_receiver.try_recv() {
+                Ok(module_value) => {
+                    tracing::info!("注册module：{:?}", &module_value);
+                    &self.module_list.push(module_value);
+                },
+                Err(try_recv_error) => {
+                    match try_recv_error {
+                        TryRecvError::Empty => {}
+                        TryRecvError::Disconnected => {
+                            tracing::error!("模块注册Grpc服务异常！");
+                            return Err(Box::try_from(TryRecvError::Disconnected).unwrap())
+                        }
+                    }
+                },
+            }
+            match self.instruct_receiver.try_recv() {
+                Ok(instruct_value) => {
+                    tracing::info!("接收指令：{:?}", &instruct_value);
+                    // TODO
+                    for message in instruct_value.message {
+                        for module in &self.module_list {
+                            tracing::debug!("Module:{},message:{}", module.name, message);
+                        }
+                    }
+                }
+                Err(try_recv_error) => {
+                    match try_recv_error {
+                        TryRecvError::Empty => {}
+                        TryRecvError::Disconnected => {
+                            tracing::error!("指令接收Grpc服务异常！");
+                            return Err(Box::try_from(TryRecvError::Disconnected).unwrap())
+                        }
+                    }
+                }
+            }
+            match self.manipulate_receiver.try_recv() {
+                Ok(manipulate_value) => {
+                    tracing::info!("接收到操作：{:?}", manipulate_value);
+                    // TODO
+                }
+                Err(try_recv_error) => {
+                    match try_recv_error {
+                        TryRecvError::Empty => {}
+                        TryRecvError::Disconnected => {
+                            tracing::error!("操作消息接收Grpc服务异常！");
+                            return Err(Box::try_from(TryRecvError::Disconnected).unwrap())
+                        }
+                    }
+                }
+            }
+        }
     }
 }

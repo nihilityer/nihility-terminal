@@ -50,12 +50,12 @@ impl NihilityTerminal {
 
         tracing::info!("日志初始化完成！");
         let (module_sender, module_receiver) = mpsc::channel::<Module>(CHANNEL_BUFFER);
-        let (instruct_server_sender, instruct_server_receiver) = mpsc::channel::<InstructEntity>(CHANNEL_BUFFER);
-        let (manipulate_server_sender, manipulate_server_receiver) = mpsc::channel::<ManipulateEntity>(CHANNEL_BUFFER);
+        let (instruct_sender, instruct_receiver) = mpsc::channel::<InstructEntity>(CHANNEL_BUFFER);
+        let (manipulate_sender, manipulate_receiver) = mpsc::channel::<ManipulateEntity>(CHANNEL_BUFFER);
 
         let broadcaster = Multicaster::init(&summary_config.net_cfg).await?;
-        let grpc_server = GrpcServer::init(&summary_config.net_cfg, module_sender, instruct_server_sender, manipulate_server_sender)?;
-        let module_manager = ModuleManager::init(module_receiver, instruct_server_receiver, manipulate_server_receiver, )?;
+        let grpc_server = GrpcServer::init(&summary_config.net_cfg, module_sender, instruct_sender, manipulate_sender)?;
+        let module_manager = ModuleManager::init(module_receiver, instruct_receiver, manipulate_receiver, )?;
 
 
         Ok(NihilityTerminal {
@@ -70,10 +70,12 @@ impl NihilityTerminal {
 
         let broadcaster_future = self.broadcaster.start();
         let grpc_server_future = self.grpc_server.start();
+        let module_manager_future = self.module_manager.start();
 
         tokio::try_join!(
             broadcaster_future,
             grpc_server_future,
+            module_manager_future,
         );
 
         Ok(())

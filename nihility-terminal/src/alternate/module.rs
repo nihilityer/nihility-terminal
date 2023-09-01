@@ -59,12 +59,14 @@ impl Module {
     }
 }
 
+#[derive(Debug)]
 pub struct InstructEntity {
-    instruct_type: InstructType,
-    message: Vec<String>,
+    pub instruct_type: InstructType,
+    pub message: Vec<String>,
 }
 
+#[derive(Debug)]
 pub struct ManipulateEntity {
-    manipulate_type: ManipulateType,
-    command: String,
+    pub manipulate_type: ManipulateType,
+    pub command: String,
 }

@@ -2,10 +2,12 @@ mod grpc;
 
 extern crate nihility_common;
 
+use std::future::Future;
 use std::net::Ipv4Addr;
 use tokio::net::UdpSocket;
-use tonic::transport::Server;
+use tonic::transport::{Error, Server};
 use local_ip_address::local_ip;
+use tracing::Level;
 
 use nihility_common::{
     module_info::{
@@ -16,10 +18,20 @@ use nihility_common::{
 use grpc::{ManipulateImpl, InstructImpl};
 use nihility_common::instruct::instruct_server::InstructServer;
 use nihility_common::manipulate::manipulate_server::ManipulateServer;
+use nihility_common::module_info::ModuleInfoResp;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let mut grpc_ip = local_ip()?.to_string()
+    let subscriber = tracing_subscriber::fmt()
+        .compact()
+        .with_max_level(Level::DEBUG)
+        .with_file(true)
+        .with_line_number(true)
+        .with_thread_ids(true)
+        .with_target(false)
+        .finish();
+    tracing::subscriber::set_global_default(subscriber)?;
+    let mut grpc_ip = local_ip()?.to_string();
 
     grpc_ip.push_str(":5051");
 
@@ -27,32 +39,46 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     socket.join_multicast_v4(Ipv4Addr::new(224,0,0,123), Ipv4Addr::new(0,0,0,0))?;
     let mut buf = [0u8; 1024];
 
-    println!("开始接收信息！");
+    tracing::info!("开始接收信息！");
     let (count, _) = socket.recv_from(&mut buf).await?;
-    println!("count:{}", count);
+    tracing::info!("count:{}", count);
     let result = String::from_utf8(Vec::from(&buf[..count])).unwrap();
     let mut grpc_addr = "http://".to_string();
     grpc_addr.push_str(&result);
-    println!("{}", grpc_addr);
+    tracing::info!("{}", grpc_addr);
 
-    let mut module_info_client = ModuleInfoClient::connect(grpc_addr).await?;
-    //
-    let server = Server::builder()
-        .add_service(ManipulateServer::new(ManipulateImpl::default()))
-        .add_service(InstructServer::new(InstructImpl::default()))
-        .serve(grpc_ip.parse().unwrap());;
+    let clone_addr = grpc_ip.clone();
+    let server = grpc_server(&mut grpc_ip);
+
+
+    let reg = register(clone_addr, grpc_addr);
+
+    tokio::join!(server, reg);
+
+    Ok(())
+}
+
+async fn register(mut grpc_ip: String, mut grpc_addr: String) -> Result<tonic::Response<ModuleInfoResp>, tonic::Status> {
+    tracing::info!("register start!");
+    tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
+    let mut module_info_client = ModuleInfoClient::connect(grpc_addr).await.unwrap();
 
     let request = tonic::Request::new(ModuleInfoReq {
         name: "Tonic".into(),
-        grpc_addr: grpc_ip,
+        grpc_addr: grpc_ip.to_string(),
     });
 
-    let response = module_info_client.register(request).await?;
+    tracing::info!("start send::{}!", &grpc_ip);
+    let response = module_info_client.register(request).await.unwrap();
 
 
-    println!("{:?}", response.into_inner());
+    Ok(response)
+}
 
-    tokio::join!(server);
-
-    Ok(())
+async fn grpc_server(mut grpc_ip: &mut String) -> () {
+    tracing::info!("server start!");
+    Server::builder()
+        .add_service(ManipulateServer::new(ManipulateImpl::default()))
+        .add_service(InstructServer::new(InstructImpl::default()))
+        .serve(grpc_ip.parse().unwrap()).await.unwrap();
 }
