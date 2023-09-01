@@ -72,7 +72,7 @@ impl NihilityTerminal {
         let grpc_server_future = self.grpc_server.start();
         let module_manager_future = self.module_manager.start();
 
-        tokio::try_join!(
+        let _ = tokio::try_join!(
             broadcaster_future,
             grpc_server_future,
             module_manager_future,

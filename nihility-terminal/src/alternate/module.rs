@@ -19,7 +19,6 @@ use nihility_common::{
 #[derive(Debug)]
 pub struct Module {
     pub name: String,
-    id: u8,
     instruct_client: InstructClient<Channel>,
     manipulate_client: ManipulateClient<Channel>,
 }
@@ -32,7 +31,6 @@ impl Module {
         let manipulate_client = ManipulateClient::connect(grpc_addr.to_string()).await?;
         Ok(Module {
             name: req.name,
-            id: 0,
             instruct_client,
             manipulate_client,
         })
@@ -69,4 +67,22 @@ pub struct InstructEntity {
 pub struct ManipulateEntity {
     pub manipulate_type: ManipulateType,
     pub command: String,
+}
+
+impl InstructEntity {
+    pub fn create_by_req(req: InstructReq) -> Result<Self, Box<dyn Error>> {
+        Ok(InstructEntity {
+            instruct_type: InstructType::from_i32(req.instruct_type).unwrap(),
+            message: req.message,
+        })
+    }
+}
+
+impl ManipulateEntity {
+    pub fn create_by_req(req: ManipulateReq) -> Result<Self, Box<dyn Error>> {
+        Ok(ManipulateEntity {
+            manipulate_type: ManipulateType::from_i32(req.manipulate_type).unwrap(),
+            command: req.command,
+        })
+    }
 }

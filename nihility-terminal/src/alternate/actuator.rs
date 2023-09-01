@@ -1,11 +1,10 @@
 use std::error::Error;
 use std::net::Ipv4Addr;
-use std::sync::{Arc, Mutex};
 
-use tokio::time;
 use tokio::net::UdpSocket;
 use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::sync::mpsc::error::TryRecvError;
+use tokio::time;
 use tokio::time::Duration;
 use tonic::transport::{Server, server::Router};
 
@@ -121,7 +120,7 @@ impl ModuleManager {
             match self.module_receiver.try_recv() {
                 Ok(module_value) => {
                     tracing::info!("注册module：{:?}", &module_value);
-                    &self.module_list.push(module_value);
+                    let _ = &self.module_list.push(module_value);
                 },
                 Err(try_recv_error) => {
                     match try_recv_error {

@@ -53,8 +53,9 @@ impl ModuleInfo for ModuleInfoImpl {
 #[tonic::async_trait]
 impl Instruct for InstructImpl {
     async fn send_instruct(&self, request: Request<InstructReq>) -> Result<Response<InstructResp>, Status> {
-        let test_req = request.into_inner();
-        tracing::info!("get info:{:?}", test_req);
+        let instruct = InstructEntity::create_by_req(request.into_inner()).unwrap();
+        tracing::info!("get instruct:{:?}", instruct);
+        self.instruct_sender.send(instruct).await.unwrap();
         Ok(Response::new(InstructResp {
             status: true,
         }))
@@ -64,8 +65,9 @@ impl Instruct for InstructImpl {
 #[tonic::async_trait]
 impl Manipulate for ManipulateImpl {
     async fn send_manipulate(&self, request: Request<ManipulateReq>) -> Result<Response<ManipulateResp>, Status> {
-        let test_req = request.into_inner();
-        tracing::info!("get info:{:?}", test_req);
+        let manipulate = ManipulateEntity::create_by_req(request.into_inner()).unwrap();
+        tracing::info!("get manipulate:{:?}", manipulate);
+        self.manipulate_sender.send(manipulate).await.unwrap();
         Ok(Response::new(ManipulateResp {
             status: true,
         }))
