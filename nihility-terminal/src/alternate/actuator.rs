@@ -1,7 +1,13 @@
 use std::error::Error;
 use std::net::Ipv4Addr;
 
-use tokio::net::UdpSocket;
+use tokio::io::{
+    self
+};
+use tokio::net::{
+    UdpSocket,
+    unix::pipe
+};
 use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::sync::mpsc::error::TryRecvError;
 use tokio::time;
@@ -30,7 +36,10 @@ use crate::alternate::{
 
 // 发送组播播消息的间隔时间，单位：秒
 const MULTICAST_INTERVAL:u64 = 10;
+// 处理通讯模块消息间隔
 const MANAGER_INTERVAL:u64 = 2;
+// unix系统上FIFO文件路径
+pub const FIFO_NAME: &str = "./communication/fifo";
 
 pub struct Multicaster {
     udp_socket: UdpSocket,
@@ -41,6 +50,11 @@ pub struct Multicaster {
 pub struct GrpcServer {
     grpc_server_router: Router,
     grpc_server_addr: String,
+}
+
+pub struct FIFOProcessor {
+    pub rx: pipe::Receiver,
+    pub tx: pipe::Sender,
 }
 
 pub struct ModuleManager {
@@ -96,6 +110,60 @@ impl GrpcServer {
         tracing::debug!("GrpcServer start!");
         self.grpc_server_router
             .serve(self.grpc_server_addr.parse().unwrap()).await?;
+        Ok(())
+    }
+}
+
+impl FIFOProcessor {
+    pub fn init() -> Result<Self, Box<dyn Error>> {
+        let rx = pipe::OpenOptions::new().open_receiver(FIFO_NAME)?;
+        let tx = pipe::OpenOptions::new().open_sender(FIFO_NAME)?;
+
+        Ok(FIFOProcessor {
+            rx,
+            tx
+        })
+    }
+
+    pub async fn start(self) -> Result<(), Box<dyn Error>> {
+        tracing::info!("FIFOProcessor start");
+        loop {
+            // Wait for the pipe to be writable
+            self.tx.writable().await?;
+            tracing::info!("start write");
+
+            // Try to write data, this may still fail with `WouldBlock`
+            // if the readiness event is a false positive.
+            match self.tx.try_write(b"hello world") {
+                Ok(_) => {
+                    break;
+                }
+                Err(e) if e.kind() == io::ErrorKind::WouldBlock => {
+                    continue;
+                }
+                Err(e) => {
+                    return Err(e.into());
+                }
+            }
+        }
+        loop {
+            self.rx.readable().await?;
+            let mut msg = vec![0; 1024];
+
+            match self.rx.try_read(&mut msg) {
+                Ok(n) => {
+                    let result = String::from_utf8(Vec::from(&msg[..n])).unwrap();
+                    tracing::info!("{}", result);
+                    break;
+                }
+                Err(e) if e.kind() == io::ErrorKind::WouldBlock => {
+                    continue;
+                }
+                Err(e) => {
+                    return Err(e.into());
+                }
+            }
+        }
         Ok(())
     }
 }

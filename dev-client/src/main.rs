@@ -1,19 +1,15 @@
-mod grpc;
-
 extern crate nihility_common;
 
 use std::future::Future;
 use std::net::Ipv4Addr;
-use tokio::net::UdpSocket;
-use tonic::transport::{Error, Server};
+
 use local_ip_address::local_ip;
+use tokio::net::UdpSocket;
+use tonic::transport::Server;
 use tracing::Level;
 
+use grpc::{InstructImpl, ManipulateImpl};
 use nihility_common::{
-    module_info::{
-        module_info_client::ModuleInfoClient,
-        ModuleInfoReq,
-    },
     instruct::{
         instruct_client::InstructClient,
         InstructReq
@@ -21,14 +17,18 @@ use nihility_common::{
     manipulate::{
         manipulate_client::ManipulateClient,
         ManipulateReq
+    },
+    module_info::{
+        module_info_client::ModuleInfoClient,
+        ModuleInfoReq,
     }
 };
-use grpc::{ManipulateImpl, InstructImpl};
 use nihility_common::instruct::instruct_server::InstructServer;
 use nihility_common::instruct::InstructType;
 use nihility_common::manipulate::manipulate_server::ManipulateServer;
 use nihility_common::manipulate::ManipulateType;
-use nihility_common::module_info::ModuleInfoResp;
+
+mod grpc;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
