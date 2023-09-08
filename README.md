@@ -11,29 +11,60 @@
 
 ## Grpc消息设计
 
-- [ ] 通知其他模块本模块信息
+- [ ] 模块信息
 - [ ] 指令信息
 - [ ] 操作信息
 
-## 模块中Grpc的client和server设计
+## 配置项设计
 
-### 主模块
+### 日志模块（log）
 
-- [-] 接收子模块/交互模块模块信息（server）
-- [ ] 接收交互模块指令信息（server）
-- [ ] 接收子模块操作信息（server）
-- [ ] 通知子模块指令信息（client）
-- [ ] 通知其他模块操作信息（client）
+- [ ] （enable）是否启用日志，默认为启用，（bool）
+- [ ] （level）日志级别，默认为`INFO`，（string）
+- [ ] （with_file）日志是否显示文件，默认为`false`，（bool）
+- [ ] （with_line_number）日志是否显示行号，默认为`false`，（bool）
+- [ ] （with_thread_ids）日志是否显示线程id，默认为`false`，（bool）
+- [ ] （with_target）日志是否显示事件目标，默认为`false`，（bool）
 
-### 交互模块
+### Grpc模块（grpc）
 
-- [ ] 接收主模块操作信息（server）
-- [ ] 发送模块信息给主模块（client）
-- [ ] 发送指令信息到主模块（client）
+- [ ] （enable）是否启用Grpc通讯，Grpc和管道至少要启用一个，否则报错（bool）
+- [ ] （addr）Grpc服务地址，即本机地址，默认由程序获取机器内网地址（string）
+- [ ] （port）Grpc服务端口，即服务使用的端口，默认为5050（number）
 
-### 子模块
+### 管道通讯模块（pipe）
 
-- [ ] 接收主模块操作信息（server）
-- [ ] 接收主模块指令信息（server）
-- [ ] 发送模块信息给主模块（client）
-- [ ] 通知主模块操作信息（client）
+此模块在不同平台使用的方式不同，unix平台使用pipe，Windows平台使用named_pipe
+
+- [ ] （enable）是否启用管道通讯，Grpc和管道至少要启用一个，否则报错，当没有配置文件时，默认使用管道通信（bool）
+
+#### unix平台（unix）
+
+- [ ] （directory）管道存放位置，只在程序目录下创建，默认为`communication`，注意校验！（string）
+- [ ] （module）模块注册管道，默认为`module`，（string）
+- [ ] （instruct_receiver）指令接收管道，默认为`instruct_receiver`，（string）
+- [ ] （instruct_sender）指令发送管道，默认为`instruct_sender`，（string）
+- [ ] （manipulate_receiver）操作接收管道，默认为`manipulate_receiver`，（string）
+- [ ] （manipulate_sender）操作发送管道，默认为`manipulate_sender`，（string）
+
+#### windows平台（windows）
+
+- [ ] TODO
+
+### 组播模块（multicast）
+
+- [ ] （enable）是否启用组播，当Grpc开启时默认启用（bool）
+- [ ] （bind_addr）udp绑定地址，默认为`0.0.0.0`，（string）
+- [ ] （bind_port）udp绑定端口，默认为`0`，（number）
+- [ ] （multicast_group）组播组，默认为`224.0.0.123`，（string）
+- [ ] （multicast_port）组播端口，默认为`1234`，（number）
+- [ ] （interval）组播发送间隔，默认为`5`，单位：秒，（number）
+
+### 子模块管理模块（module_manager)
+
+- [ ] （interval）处理消息的间隔，默认为`1`，单位：秒，（number）
+
+#### 默认子模块（default_submodule）
+
+- [ ] （enable）是否使用内置子模块，当没有配置文件时默认开启（bool）
+- [ ] TODO
