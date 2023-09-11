@@ -1,18 +1,23 @@
-use std::error::Error;
 use std::net::Ipv4Addr;
+use std::str::FromStr;
 
-use tokio::io::{
-    self
+use tokio::{
+    io,
+    sync::mpsc::{
+        Receiver,
+        Sender,
+        error::TryRecvError
+    },
+    time::{
+        self,
+        Duration
+    },
+    net::{
+        UdpSocket,
+        unix::pipe,
+    }
 };
-use tokio::net::{
-    UdpSocket,
-    unix::pipe
-};
-use tokio::sync::mpsc::{Receiver, Sender};
-use tokio::sync::mpsc::error::TryRecvError;
-use tokio::time;
-use tokio::time::Duration;
-use tonic::transport::{Server, server::Router};
+use tonic::transport::Server;
 
 use nihility_common::{
     instruct::instruct_server::InstructServer,
@@ -21,7 +26,7 @@ use nihility_common::{
 };
 
 use crate::alternate::{
-    config::NetConfig,
+    config::{GrpcConfig, ModuleManagerConfig, MulticastConfig, PipeConfig},
     implement::{
         InstructImpl,
         ManipulateImpl,
@@ -31,136 +36,108 @@ use crate::alternate::{
         InstructEntity,
         ManipulateEntity,
         Module,
-    }
+    },
 };
+use crate::error::AppError;
 
-// 发送组播播消息的间隔时间，单位：秒
-const MULTICAST_INTERVAL:u64 = 10;
-// 处理通讯模块消息间隔
-const MANAGER_INTERVAL:u64 = 2;
-// unix系统上FIFO文件路径
-pub const FIFO_NAME: &str = "./communication/fifo";
+pub struct Multicaster {}
 
-pub struct Multicaster {
-    udp_socket: UdpSocket,
-    grpc_addr: String,
-    multicaster_addr: String,
-}
+pub struct GrpcServer {}
 
-pub struct GrpcServer {
-    grpc_server_router: Router,
-    grpc_server_addr: String,
-}
+pub struct PipeProcessor {}
 
-pub struct FIFOProcessor {
-    pub rx: pipe::Receiver,
-    pub tx: pipe::Sender,
-}
-
-pub struct ModuleManager {
-    module_list: Vec<Module>,
-    module_receiver: Receiver<Module>,
-    instruct_receiver: Receiver<InstructEntity>,
-    manipulate_receiver: Receiver<ManipulateEntity>,
-}
+pub struct ModuleManager {}
 
 impl Multicaster {
+    pub async fn start(multicast_config: &MulticastConfig) -> Result<(), AppError> {
+        if multicast_config.enable {
+            tracing::debug!("Broadcaster start!");
+            let mut bind_addr = multicast_config.bind_addr.to_string();
+            bind_addr.push_str(format!(":{}", multicast_config.bind_port).as_str());
+            tracing::debug!("初始化udp_socket在：{}", &bind_addr);
+            let udp_socket = UdpSocket::bind(bind_addr).await?;
 
-    pub async fn init(net_cfg: &NetConfig) -> Result<Self, Box<dyn Error>> {
-        tracing::debug!("初始化udp_socket在：{}", &net_cfg.udp_addr);
-        let udp_socket = UdpSocket::bind(&net_cfg.udp_addr).await?;
-        udp_socket.join_multicast_v4(Ipv4Addr::new(224,0,0,123), Ipv4Addr::new(0,0,0,0))?;
+            let group_addr = Ipv4Addr::from_str(multicast_config.multicast_group.as_str())?;
+            let interface_addr = Ipv4Addr::from_str(multicast_config.bind_addr.as_str())?;
+            udp_socket.join_multicast_v4(group_addr, interface_addr)?;
 
-        Ok(Multicaster {
-            udp_socket,
-            grpc_addr: net_cfg.grpc_addr.to_string(),
-            multicaster_addr: net_cfg.multicast_port.to_string(),
-        })
-    }
+            let mut multicast_addr = multicast_config.multicast_group.to_string();
+            multicast_addr.push_str(format!(":{}", multicast_config.multicast_port).as_str());
 
-    pub async fn start(self) -> Result<(), Box<dyn Error>> {
-        tracing::debug!("Broadcaster start!");
-        loop {
-            let len = self.udp_socket.send_to(self.grpc_addr.as_bytes(), &*self.multicaster_addr).await?;
-            tracing::debug!("向{}发送组播信息：{}, len: {}", self.multicaster_addr, self.grpc_addr, len);
-            time::sleep(Duration::from_secs(MULTICAST_INTERVAL)).await;
+            loop {
+                tracing::debug!("发送组播信息：{}", multicast_config.multicast_info);
+                udp_socket.send_to(multicast_config.multicast_info.as_bytes(), multicast_addr.as_str()).await?;
+                time::sleep(Duration::from_secs(multicast_config.interval.into())).await;
+            }
         }
-    }
-
-}
-
-impl GrpcServer {
-    pub fn init(net_cfg: &NetConfig,
-                module_sender: Sender<Module>,
-                instruct_sender: Sender<InstructEntity>,
-                manipulate_sender: Sender<ManipulateEntity>,
-    ) -> Result<Self, Box<dyn Error>> {
-        let router = Server::builder()
-            .add_service(ModuleInfoServer::new(ModuleInfoImpl::init(module_sender)?))
-            .add_service(InstructServer::new(InstructImpl::init(instruct_sender)?))
-            .add_service(ManipulateServer::new(ManipulateImpl::init(manipulate_sender)?));
-
-        Ok(GrpcServer {
-            grpc_server_router: router,
-            grpc_server_addr: net_cfg.grpc_addr.to_string(),
-        })
-    }
-
-    pub async fn start(self) -> Result<(), Box<dyn Error>> {
-        tracing::debug!("GrpcServer start!");
-        self.grpc_server_router
-            .serve(self.grpc_server_addr.parse().unwrap()).await?;
         Ok(())
     }
 }
 
-impl FIFOProcessor {
-    pub fn init() -> Result<Self, Box<dyn Error>> {
-        let rx = pipe::OpenOptions::new().open_receiver(FIFO_NAME)?;
-        let tx = pipe::OpenOptions::new().open_sender(FIFO_NAME)?;
+impl GrpcServer {
+    pub async fn start(grpc_config: &GrpcConfig,
+                       module_sender: Sender<Module>,
+                       instruct_sender: Sender<InstructEntity>,
+                       manipulate_sender: Sender<ManipulateEntity>, ) -> Result<(), AppError> {
+        if grpc_config.enable {
+            tracing::debug!("GrpcServer start!");
+            let mut grpc_addr = grpc_config.addr.to_string();
+            grpc_addr.push_str(format!(":{}", grpc_config.port).as_str());
 
-        Ok(FIFOProcessor {
-            rx,
-            tx
-        })
+            Server::builder()
+                .add_service(ModuleInfoServer::new(ModuleInfoImpl::init(module_sender)))
+                .add_service(InstructServer::new(InstructImpl::init(instruct_sender)))
+                .add_service(ManipulateServer::new(ManipulateImpl::init(manipulate_sender)))
+                .serve(grpc_addr.parse()?).await?;
+        }
+
+        Ok(())
     }
+}
 
-    pub async fn start(self) -> Result<(), Box<dyn Error>> {
-        tracing::info!("FIFOProcessor start");
-        loop {
-            // Wait for the pipe to be writable
-            self.tx.writable().await?;
-            tracing::info!("start write");
+impl PipeProcessor {
+    pub async fn start(pipe_config: &PipeConfig) -> Result<(), AppError> {
+        if pipe_config.enable {
+            tracing::info!("PipeProcessor start!");
+            let rx = pipe::OpenOptions::new().open_receiver(&pipe_config.unix.module)?;
+            let tx = pipe::OpenOptions::new().open_sender(&pipe_config.unix.module)?;
 
-            // Try to write data, this may still fail with `WouldBlock`
-            // if the readiness event is a false positive.
-            match self.tx.try_write(b"hello world") {
-                Ok(_) => {
-                    break;
-                }
-                Err(e) if e.kind() == io::ErrorKind::WouldBlock => {
-                    continue;
-                }
-                Err(e) => {
-                    return Err(e.into());
+            tracing::info!("FIFOProcessor start");
+            loop {
+                // Wait for the pipe to be writable
+                tx.writable().await?;
+                tracing::info!("start write");
+
+                // Try to write data, this may still fail with `WouldBlock`
+                // if the readiness event is a false positive.
+                match tx.try_write(b"hello world") {
+                    Ok(_) => {
+                        break;
+                    }
+                    Err(e) if e.kind() == io::ErrorKind::WouldBlock => {
+                        continue;
+                    }
+                    Err(e) => {
+                        return Err(e.into());
+                    }
                 }
             }
-        }
-        loop {
-            self.rx.readable().await?;
-            let mut msg = vec![0; 1024];
+            loop {
+                rx.readable().await?;
+                let mut msg = vec![0; 1024];
 
-            match self.rx.try_read(&mut msg) {
-                Ok(n) => {
-                    let result = String::from_utf8(Vec::from(&msg[..n])).unwrap();
-                    tracing::info!("{}", result);
-                    break;
-                }
-                Err(e) if e.kind() == io::ErrorKind::WouldBlock => {
-                    continue;
-                }
-                Err(e) => {
-                    return Err(e.into());
+                match rx.try_read(&mut msg) {
+                    Ok(n) => {
+                        let result = String::from_utf8(Vec::from(&msg[..n])).unwrap();
+                        tracing::info!("{}", result);
+                        break;
+                    }
+                    Err(e) if e.kind() == io::ErrorKind::WouldBlock => {
+                        continue;
+                    }
+                    Err(e) => {
+                        return Err(e.into());
+                    }
                 }
             }
         }
@@ -169,43 +146,35 @@ impl FIFOProcessor {
 }
 
 impl ModuleManager {
-    pub fn init(module_receiver: Receiver<Module>,
-                instruct_receiver: Receiver<InstructEntity>,
-                manipulate_receiver: Receiver<ManipulateEntity>
-    ) -> Result<Self, Box<dyn Error>> {
-        Ok(ModuleManager {
-            module_list: Vec::new(),
-            module_receiver,
-            instruct_receiver,
-            manipulate_receiver,
-        })
-    }
-
-    pub async fn start(mut self) -> Result<(), Box<dyn Error>> {
+    pub async fn start(module_manager_config: &ModuleManagerConfig,
+                       mut module_receiver: Receiver<Module>,
+                       mut instruct_receiver: Receiver<InstructEntity>,
+                       mut manipulate_receiver: Receiver<ManipulateEntity>, ) -> Result<(), AppError> {
         tracing::info!("ModuleManager start!");
+        let mut module_list = Vec::new();
         loop {
-            time::sleep(Duration::from_secs(MANAGER_INTERVAL)).await;
-            match self.module_receiver.try_recv() {
+            time::sleep(Duration::from_secs(module_manager_config.interval.into())).await;
+            match module_receiver.try_recv() {
                 Ok(module_value) => {
                     tracing::info!("注册module：{:?}", &module_value);
-                    let _ = &self.module_list.push(module_value);
-                },
+                    let _ = &module_list.push(module_value);
+                }
                 Err(try_recv_error) => {
                     match try_recv_error {
                         TryRecvError::Empty => {}
                         TryRecvError::Disconnected => {
                             tracing::error!("模块注册Grpc服务异常！");
-                            return Err(Box::try_from(TryRecvError::Disconnected).unwrap())
+                            return Err(AppError::ModuleManagerError("模块注册".to_string()));
                         }
                     }
-                },
+                }
             }
-            match self.instruct_receiver.try_recv() {
+            match instruct_receiver.try_recv() {
                 Ok(instruct_value) => {
                     tracing::info!("接收指令：{:?}", &instruct_value);
                     // TODO
                     for message in instruct_value.message {
-                        for module in &self.module_list {
+                        for module in &module_list {
                             tracing::debug!("Module:{},message:{}", module.name, message);
                         }
                     }
@@ -215,12 +184,12 @@ impl ModuleManager {
                         TryRecvError::Empty => {}
                         TryRecvError::Disconnected => {
                             tracing::error!("指令接收Grpc服务异常！");
-                            return Err(Box::try_from(TryRecvError::Disconnected).unwrap())
+                            return Err(AppError::ModuleManagerError("指令接收".to_string()));
                         }
                     }
                 }
             }
-            match self.manipulate_receiver.try_recv() {
+            match manipulate_receiver.try_recv() {
                 Ok(manipulate_value) => {
                     tracing::info!("接收到操作：{:?}", manipulate_value);
                     // TODO
@@ -230,7 +199,7 @@ impl ModuleManager {
                         TryRecvError::Empty => {}
                         TryRecvError::Disconnected => {
                             tracing::error!("操作消息接收Grpc服务异常！");
-                            return Err(Box::try_from(TryRecvError::Disconnected).unwrap())
+                            return Err(AppError::ModuleManagerError("操作消息接收".to_string()));
                         }
                     }
                 }

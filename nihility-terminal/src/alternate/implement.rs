@@ -1,4 +1,3 @@
-use std::error::Error;
 use tonic::{Request, Response, Status};
 use tokio::sync::mpsc::Sender;
 
@@ -75,25 +74,25 @@ impl Manipulate for ManipulateImpl {
 }
 
 impl ModuleInfoImpl {
-    pub fn init(sender: Sender<Module>) -> Result<Self, Box<dyn Error>> {
-        Ok(ModuleInfoImpl {
+    pub fn init(sender: Sender<Module>) -> Self {
+        ModuleInfoImpl {
             module_sender: sender,
-        })
+        }
     }
 }
 
 impl InstructImpl {
-    pub fn init(sender: Sender<InstructEntity>) -> Result<Self, Box<dyn Error>> {
-        Ok(InstructImpl {
+    pub fn init(sender: Sender<InstructEntity>) -> Self {
+        InstructImpl {
             instruct_sender: sender,
-        })
+        }
     }
 }
 
 impl ManipulateImpl {
-    pub fn init(sender: Sender<ManipulateEntity>) -> Result<Self, Box<dyn Error>> {
-        Ok(ManipulateImpl {
+    pub fn init(sender: Sender<ManipulateEntity>) -> Self {
+        ManipulateImpl {
             manipulate_sender: sender,
-        })
+        }
     }
 }
