@@ -1,28 +1,28 @@
-use tonic::{Request, Response, Status};
 use tokio::sync::mpsc::Sender;
+use tonic::{Request, Response, Status};
 
-use nihility_common::module_info::{
-    ModuleInfoReq,
-    ModuleInfoResp,
-    module_info_server::ModuleInfo,
-};
-
-use nihility_common::instruct::{
-    InstructReq,
-    InstructResp,
-    instruct_server::Instruct,
-};
-
-use nihility_common::manipulate::{
-    ManipulateReq,
-    ManipulateResp,
-    manipulate_server::Manipulate,
+use nihility_common::{
+    instruct::{
+        instruct_server::Instruct,
+        InstructReq,
+        InstructResp,
+    },
+    manipulate::{
+        manipulate_server::Manipulate,
+        ManipulateReq,
+        ManipulateResp,
+    },
+    module_info::{
+        module_info_server::ModuleInfo,
+        ModuleInfoReq,
+        ModuleInfoResp,
+    }
 };
 
 use crate::alternate::module::{
-    Module,
-    ManipulateEntity,
     InstructEntity,
+    ManipulateEntity,
+    Module,
 };
 
 pub struct ModuleInfoImpl {
@@ -52,7 +52,7 @@ impl ModuleInfo for ModuleInfoImpl {
 #[tonic::async_trait]
 impl Instruct for InstructImpl {
     async fn send_instruct(&self, request: Request<InstructReq>) -> Result<Response<InstructResp>, Status> {
-        let instruct = InstructEntity::create_by_req(request.into_inner()).unwrap();
+        let instruct = InstructEntity::create_by_req(request.into_inner());
         tracing::info!("get instruct:{:?}", instruct);
         self.instruct_sender.send(instruct).await.unwrap();
         Ok(Response::new(InstructResp {
@@ -64,7 +64,7 @@ impl Instruct for InstructImpl {
 #[tonic::async_trait]
 impl Manipulate for ManipulateImpl {
     async fn send_manipulate(&self, request: Request<ManipulateReq>) -> Result<Response<ManipulateResp>, Status> {
-        let manipulate = ManipulateEntity::create_by_req(request.into_inner()).unwrap();
+        let manipulate = ManipulateEntity::create_by_req(request.into_inner());
         tracing::info!("get manipulate:{:?}", manipulate);
         self.manipulate_sender.send(manipulate).await.unwrap();
         Ok(Response::new(ManipulateResp {

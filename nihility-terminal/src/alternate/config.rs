@@ -162,10 +162,10 @@ impl SummaryConfig {
 
             return Ok(config)
         }
-        println!("开始构建配置！");
-
-        Ok(Figment::from(Serialized::defaults(config))
+        let result: SummaryConfig = Figment::from(Serialized::defaults(config))
             .merge(Json::file("config.json"))
-            .extract()?)
+            .extract()?;
+        println!("配置初始化成功：Grpc：{}，pipe：{}，multicast：{}", &result.grpc.enable, &result.pipe.enable, &result.multicast.enable);
+        Ok(result)
     }
 }

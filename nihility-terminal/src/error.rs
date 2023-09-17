@@ -1,4 +1,5 @@
 use thiserror::Error;
+use crate::alternate::module;
 
 #[derive(Error, Debug)]
 pub enum  AppError {
@@ -13,6 +14,27 @@ pub enum  AppError {
 
     #[error("模块管理中{0}错误！")]
     ModuleManagerError(String),
+
+    #[error("管道通讯{0}错误！")]
+    PipeError(String),
+
+    #[error("Module Mpsc进程通讯发送错误！")]
+    ModuleMpscMessageError(#[from] tokio::sync::mpsc::error::SendError<module::Module>),
+
+    #[error("Instruct Mpsc进程通讯发送错误！")]
+    InstructMpscMessageError(#[from] tokio::sync::mpsc::error::SendError<module::InstructEntity>),
+
+    #[error("Manipulate Mpsc进程通讯发送错误！")]
+    ManipulateMpscMessageError(#[from] tokio::sync::mpsc::error::SendError<module::ManipulateEntity>),
+
+    #[error("Tonic错误！")]
+    TonicError(#[from] tonic::Status),
+
+    #[error("prost 解码错误！")]
+    DecodeError(#[from] prost::DecodeError),
+
+    #[error("操作系统不支持！")]
+    OsNotSupportError,
 
     #[error("日志模块初始化异常！")]
     LogInitException(#[from] tracing::dispatcher::SetGlobalDefaultError),

@@ -4,7 +4,13 @@ use std::future::Future;
 use std::net::Ipv4Addr;
 
 use local_ip_address::local_ip;
-use tokio::net::UdpSocket;
+use tokio::{
+    net::UdpSocket,
+    time::{
+        self,
+        Duration
+    },
+};
 use tonic::transport::Server;
 use tracing::Level;
 
@@ -46,7 +52,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     grpc_ip.push_str(":5051");
 
     let socket = UdpSocket::bind("0.0.0.0:1234").await?;
-    socket.join_multicast_v4(Ipv4Addr::new(224,0,0,123), Ipv4Addr::new(0,0,0,0))?;
+    socket.join_multicast_v4(Ipv4Addr::new(224,0,1,123), Ipv4Addr::new(0,0,0,0))?;
+    socket.connect("224.0.1.123:1234").await?;
+    // socket.set_multicast_loop_v4(true)?;
+    tracing::info!("socket:{:?}", &socket);
     let mut buf = [0u8; 1024];
 
     tracing::info!("开始接收信息！");
@@ -56,7 +65,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut grpc_addr = "http://".to_string();
     grpc_addr.push_str(&result);
     tracing::info!("{}", grpc_addr);
-
+    
     let clone_addr = grpc_ip.clone();
     let server = grpc_server(&mut grpc_ip);
 
@@ -90,6 +99,11 @@ async fn register(mut grpc_ip: String, grpc_addr: String) -> Result<(), tonic::S
         manipulate_type: ManipulateType::DefaultType.into(),
         command: "test message".to_string(),
     });
+
+    while let Err(_) = InstructClient::connect(grpc_ip.to_string()).await {
+        tracing::info!("wait self server startup");
+        time::sleep(Duration::from_secs(1)).await;
+    }
 
     let module_info_resp = module_info_client.register(module_req).await.unwrap();
     tracing::info!("module_info_resp:{:?}", module_info_resp.into_inner());
