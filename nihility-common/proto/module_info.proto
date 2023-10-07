@@ -6,9 +6,15 @@ service ModuleInfo {
   rpc register (ModuleInfoReq) returns (ModuleInfoResp) {}
 }
 
+enum ClientType {
+  GRPC_TYPE = 0;
+  PIPE_TYPE = 1;
+}
+
 message ModuleInfoReq {
   string name = 1;
-  string grpc_addr = 2;
+  ClientType client_type = 2;
+  repeated string addr = 3;
 }
 
 message ModuleInfoResp {
