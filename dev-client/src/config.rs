@@ -1,28 +1,25 @@
-use std::{path::Path, fs::File, io::Write, fs};
-use local_ip_address::local_ip;
+use std::error::Error;
 use serde::{Deserialize, Serialize};
 use serde_json;
+use local_ip_address::local_ip;
 use figment::{
     providers::{Format, Json, Serialized},
     Figment
 };
-use crate::error::AppError;
+use std::{
+    path::Path,
+    fs::File,
+    io::Write
+};
 
-/*
-总配置
- */
 #[derive(Deserialize, Serialize)]
-pub struct SummaryConfig {
+pub struct ClientConfig {
     pub log: LogConfig,
     pub grpc: GrpcConfig,
     pub pipe: PipeConfig,
     pub multicast: MulticastConfig,
-    pub module_manager: ModuleManagerConfig,
 }
 
-/*
-日志相关配置
- */
 #[derive(Deserialize, Serialize)]
 pub struct LogConfig {
     pub enable: bool,
@@ -33,9 +30,6 @@ pub struct LogConfig {
     pub with_target: bool,
 }
 
-/*
-Grpc相关配置
- */
 #[derive(Deserialize, Serialize)]
 pub struct GrpcConfig {
     pub enable: bool,
@@ -43,9 +37,6 @@ pub struct GrpcConfig {
     pub port: u32,
 }
 
-/*
-管道通信相关配置
- */
 #[derive(Deserialize, Serialize)]
 pub struct PipeConfig {
     pub enable: bool,
@@ -53,9 +44,6 @@ pub struct PipeConfig {
     pub windows: PipeWindowsConfig,
 }
 
-/*
-unix管道通信相关配置
- */
 #[derive(Deserialize, Serialize)]
 pub struct PipeUnixConfig {
     pub directory: String,
@@ -66,9 +54,6 @@ pub struct PipeUnixConfig {
     pub manipulate_sender: String,
 }
 
-/*
-windows管道通信相关配置
- */
 #[derive(Deserialize, Serialize)]
 pub struct PipeWindowsConfig {
     // TODO
@@ -76,35 +61,18 @@ pub struct PipeWindowsConfig {
     pub port: u32,
 }
 
-/*
-组播相关配置
- */
 #[derive(Deserialize, Serialize)]
 pub struct MulticastConfig {
     pub enable: bool,
     pub bind_addr: String,
-    pub bind_port: u32,
     pub multicast_group: String,
     pub multicast_port: u32,
     pub multicast_info: String,
     pub interval: u32,
 }
 
-/*
-子模块管理相关配置（核心配置）
-目前没有多少能正常配置的
- */
-#[derive(Deserialize, Serialize)]
-pub struct ModuleManagerConfig {
-    pub interval: u32,
-    pub channel_buffer: usize,
-    pub encode_model_path: String,
-    pub encode_model_name: String,
-}
-
-impl SummaryConfig {
-
-    fn default() -> Result<Self, AppError> {
+impl ClientConfig {
+    fn default() -> Result<Self, Box<dyn Error>> {
         let local_ip_addr = local_ip()?;
 
         let log_config = LogConfig {
@@ -122,10 +90,8 @@ impl SummaryConfig {
             port: 5050,
         };
 
-        let work_dir = fs::canonicalize("../")?.to_str().ok_or(AppError::ConfigError("create workdir config".to_string()))?.to_string();
-        let work_dir = format!("{}/communication", work_dir);
         let pipe_unix_config = PipeUnixConfig {
-            directory: work_dir,
+            directory: "../nihility-terminal/communication".to_string(),
             module: "module".to_string(),
             instruct_receiver: "instruct_receiver".to_string(),
             instruct_sender: "instruct_sender".to_string(),
@@ -144,40 +110,27 @@ impl SummaryConfig {
             windows: pipe_windows_config,
         };
 
-        let mut multicast_info = grpc_config.addr.to_string();
-        multicast_info.push_str(format!(":{}", &grpc_config.port).as_str());
+        let multicast_info = format!("{}:{}", &grpc_config.addr, &grpc_config.port);
         let multicast_config = MulticastConfig {
             enable: false,
             bind_addr: "0.0.0.0".to_string(),
-            bind_port: 0,
             multicast_group: "224.0.0.123".to_string(),
             multicast_port: 1234,
             multicast_info,
             interval: 5,
         };
 
-        let module_manager_config = ModuleManagerConfig {
-            interval: 1,
-            channel_buffer: 10,
-            encode_model_path: "model".to_string(),
-            encode_model_name: "onnx_bge_small_zh".to_string()
-        };
-
-        Ok(SummaryConfig {
+        Ok(ClientConfig {
             log: log_config,
             grpc: grpc_config,
             pipe: pipe_config,
             multicast: multicast_config,
-            module_manager: module_manager_config,
         })
     }
 
-    /*
-    当配置文件不存在时使用默认配置
-     */
-    pub fn init() -> Result<Self, AppError> {
+    pub fn init() -> Result<Self, Box<dyn Error>> {
 
-        let mut config = SummaryConfig::default()?;
+        let mut config = ClientConfig::default()?;
 
         if !Path::try_exists("config.json".as_ref())? {
             println!("未找到配置文件，开始使用默认设置");
@@ -192,7 +145,7 @@ impl SummaryConfig {
 
             return Ok(config)
         }
-        let result: SummaryConfig = Figment::from(Serialized::defaults(config))
+        let result: ClientConfig = Figment::from(Serialized::defaults(config))
             .merge(Json::file("config.json"))
             .extract()?;
         Ok(result)

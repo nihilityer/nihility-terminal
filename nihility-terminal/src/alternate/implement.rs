@@ -19,11 +19,7 @@ use nihility_common::{
     }
 };
 
-use crate::alternate::module::{
-    InstructEntity,
-    ManipulateEntity,
-    Module,
-};
+use crate::alternate::module::{InstructEntity, ManipulateEntity, Module};
 
 pub struct ModuleInfoImpl {
     module_sender: Sender<Module>,
@@ -74,7 +70,7 @@ impl Manipulate for ManipulateImpl {
 }
 
 impl ModuleInfoImpl {
-    pub fn init(sender: Sender<Module>) -> Self {
+    pub fn init(sender: Sender<Module>) -> Self{
         ModuleInfoImpl {
             module_sender: sender,
         }

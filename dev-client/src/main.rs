@@ -1,26 +1,16 @@
 extern crate nihility_common;
 
-use std::{
-    net::Ipv4Addr,
-    path::Path,
-    process::Command,
-    str::FromStr,
-};
+use std::{net::Ipv4Addr, path::Path, process::Command, str::FromStr, thread};
 use std::error::Error;
-use time::{macros::format_description, UtcOffset};
 
-use tokio::{
-    net::{
-        UdpSocket,
-        unix::pipe
-    },
-    time::{
-        Duration
-    },
-    sync::oneshot,
-};
-use tonic::transport::Server;
 use prost::Message;
+use time::{macros::format_description, UtcOffset};
+use tokio::{io, net::{
+    UdpSocket,
+    unix::pipe
+}, sync::oneshot, time::Duration};
+use tokio::net::unix::pipe::{Receiver, Sender};
+use tonic::transport::Server;
 use tracing::Level;
 
 use grpc::{InstructImpl, ManipulateImpl};
@@ -43,28 +33,29 @@ use nihility_common::instruct::InstructType;
 use nihility_common::manipulate::manipulate_server::ManipulateServer;
 use nihility_common::manipulate::ManipulateType;
 use nihility_common::module_info::ClientType;
+
 use crate::config::{ClientConfig, GrpcConfig, MulticastConfig};
 
 mod grpc;
 mod config;
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+async fn main() -> Result<(), Box<dyn Error>> {
     let client_config = ClientConfig::init()?;
 
     if client_config.log.enable {
         let mut subscriber = tracing_subscriber::fmt().compact();
-        match client_config.log.level.as_str() {
-            "debug" | "DEBUG" => {
+        match client_config.log.level.to_lowercase().as_str() {
+            "debug" => {
                 subscriber = subscriber.with_max_level(Level::DEBUG);
             }
-            "info" | "INFO" => {
+            "info" => {
                 subscriber = subscriber.with_max_level(Level::INFO);
             }
-            "warn" | "WARN" => {
+            "warn" => {
                 subscriber = subscriber.with_max_level(Level::WARN);
             }
-            "error" | "ERROR" => {
+            "error" => {
                 subscriber = subscriber.with_max_level(Level::ERROR);
             }
             _ => {
@@ -92,7 +83,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let server_future = grpc_server(&client_config.grpc);
     let register_future = register(&client_config, rx);
 
-    let _ = tokio::try_join!(server_future, register_future, multicast_future);
+    let (s, r, m) = tokio::join!(server_future, register_future, multicast_future);
+
+    if let Err(e) = s {
+        tracing::debug!("{}", e)
+    }
+    if let Err(e) = r {
+        tracing::debug!("{}", e)
+    }
+    if let Err(e) = m {
+        tracing::debug!("{}", e)
+    }
 
     Ok(())
 }
@@ -123,6 +124,7 @@ async fn register(client_config: &ClientConfig, receiver: oneshot::Receiver<Stri
     tokio::time::sleep(Duration::from_secs(5)).await;
 
     if client_config.grpc.enable {
+        tracing::debug!("grpc client!");
         let grpc_addr = format!("{}:{}", &client_config.grpc.addr, &client_config.grpc.port);
 
         let (module_addr, instruct_addr, manipulate_addr) = match receiver.await {
@@ -139,7 +141,7 @@ async fn register(client_config: &ClientConfig, receiver: oneshot::Receiver<Stri
 
         let module_req = tonic::Request::new(ModuleInfoReq {
             name: "dev_client".into(),
-            client_type: ClientType::GrpcType.into(),
+            client_type: ClientType::PipeType.into(),
             addr: vec![grpc_addr.to_string()]
         });
         let message = vec!["ce4".to_string(), "shi4".to_string()];
@@ -166,104 +168,166 @@ async fn register(client_config: &ClientConfig, receiver: oneshot::Receiver<Stri
     }
 
     if client_config.pipe.enable {
+        pipe_register(client_config).await?;
+    }
 
-        let module_path = format!("{}/{}", client_config.pipe.unix.directory.as_str(), client_config.pipe.unix.module.to_string());
-        let instruct_path = format!("{}/{}", client_config.pipe.unix.directory.as_str(), client_config.pipe.unix.instruct_sender.to_string());
-        let manipulate_path = format!("{}/{}", client_config.pipe.unix.directory.as_str(), client_config.pipe.unix.manipulate_sender.to_string());
-        let client_instruct_path = format!("{}/{}", client_config.pipe.unix.directory, client_config.pipe.unix.instruct_receiver);
-        let client_manipulate_path = format!("{}/{}", client_config.pipe.unix.directory, client_config.pipe.unix.manipulate_receiver);
+    Ok(())
+}
 
-        if !Path::try_exists(&client_instruct_path.as_ref())? {
-            Command::new("mkfifo").arg(&client_instruct_path).spawn()?;
-        }
-        if !Path::try_exists(&client_manipulate_path.as_ref())? {
-            Command::new("mkfifo").arg(&client_manipulate_path).spawn()?;
-        }
+async fn pipe_register(client_config: &ClientConfig) -> Result<(), Box<dyn Error>> {
+    tracing::debug!("pipe client!");
 
-        loop {
-            if !Path::try_exists(&client_instruct_path.as_ref())? || !Path::try_exists(&client_manipulate_path.as_ref())? {
-                tokio::time::sleep(Duration::from_secs(1)).await;
-            } else {
-                break
+    let module_path = format!("{}/{}", client_config.pipe.unix.directory, client_config.pipe.unix.module);
+    let instruct_path = format!("{}/{}", client_config.pipe.unix.directory, client_config.pipe.unix.instruct_receiver);
+    let manipulate_path = format!("{}/{}", client_config.pipe.unix.directory, client_config.pipe.unix.manipulate_receiver);
+    let client_instruct_path = format!("{}/{}", client_config.pipe.unix.directory, client_config.pipe.unix.instruct_sender);
+    let client_manipulate_path = format!("{}/{}", client_config.pipe.unix.directory, client_config.pipe.unix.manipulate_sender);
+
+    if !Path::try_exists(&client_instruct_path.as_ref())? {
+        Command::new("mkfifo").arg(&client_instruct_path).output()?;
+    }
+    if !Path::try_exists(&client_manipulate_path.as_ref())? {
+        Command::new("mkfifo").arg(&client_manipulate_path).output()?;
+    }
+
+    tracing::debug!("start build pipe on: {}", &client_config.pipe.unix.directory);
+
+    let module_se = pipe::OpenOptions::new().open_sender(&module_path)?;
+    tracing::debug!("build module sender success");
+    let instruct_se = pipe::OpenOptions::new().open_sender(&instruct_path)?;
+    tracing::debug!("build instruct sender success");
+    let manipulate_se = pipe::OpenOptions::new().open_sender(&manipulate_path)?;
+    tracing::debug!("build manipulate sender success");
+
+    let ps = pipe_server(&client_instruct_path, &client_manipulate_path);
+
+    let psh = pipe_send_handler(&client_instruct_path, &client_manipulate_path, module_se, instruct_se, manipulate_se);
+    tokio::join!(ps, psh);
+    Ok(())
+}
+
+async fn pipe_server(client_instruct_path: &String, client_manipulate_path: &String) {
+    let instruct_re = pipe::OpenOptions::new().open_receiver(client_instruct_path).unwrap();
+    tracing::debug!("build instruct receiver success");
+    let manipulate_re = pipe::OpenOptions::new().open_receiver(client_manipulate_path).unwrap();
+    tracing::debug!("build manipulate receiver success");
+    loop {
+        tokio::time::sleep(Duration::from_secs(1)).await;
+        instruct_receiver(&instruct_re).await;
+        manipulate_receiver(&manipulate_re).await;
+    }
+}
+
+async fn pipe_send_handler(client_instruct_path: &String, client_manipulate_path: &String, module_se: Sender, instruct_se: Sender, manipulate_se: Sender) -> Result<(), Box<dyn Error>> {
+    loop {
+        tracing::debug!("module send start");
+        module_se.writable().await?;
+
+        let req = ModuleInfoReq {
+            name: "test".to_string(),
+            client_type: ClientType::PipeType.into(),
+            addr: vec![client_instruct_path.to_string(), client_manipulate_path.to_string()]
+        };
+        // let mut data = vec![0; 1024];
+        // req.encode(&mut data)?;
+
+        match module_se.try_write(&req.encode_to_vec()) {
+            Ok(_) => {
+                tracing::info!("module info send success!");
+                break;
             }
-        }
-
-        let module_se = pipe::OpenOptions::new().open_sender(&module_path)?;
-        let instruct_se = pipe::OpenOptions::new().open_sender(&instruct_path)?;
-        let manipulate_se = pipe::OpenOptions::new().open_sender(&manipulate_path)?;
-
-        loop {
-            module_se.writable().await?;
-
-            let req = ModuleInfoReq {
-                name: "test".to_string(),
-                client_type: ClientType::PipeType.into(),
-                addr: vec![client_instruct_path.to_string(), client_manipulate_path.to_string()]
-            };
-            let mut data = vec![0; 1024];
-            req.encode(&mut data)?;
-
-            match module_se.try_write(&data) {
-                Ok(_) => {
-                    tracing::info!("module info send success!");
-                    break;
-                }
-                Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
-                    continue;
-                }
-                Err(e) => {
-                    return Err(e.into());
-                }
+            Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                continue;
             }
-        }
-        loop {
-            instruct_se.writable().await.unwrap();
-
-            let req = InstructReq {
-                instruct_type: InstructType::DefaultType.into(),
-                message: vec!["ce4".to_string(), "shi".to_string()],
-            };
-            let mut data = vec![0; 1024];
-            req.encode(&mut data)?;
-
-            match instruct_se.try_write(&data) {
-                Ok(_) => {
-                    tracing::info!("instruct send success!");
-                    break;
-                }
-                Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
-                    continue;
-                }
-                Err(e) => {
-                    return Err(e.into());
-                }
-            }
-        }
-        loop {
-            manipulate_se.writable().await.unwrap();
-
-            let req = ManipulateReq {
-                manipulate_type: ManipulateType::DefaultType.into(),
-                command: "test".to_string(),
-            };
-            let mut data = vec![0; 1024];
-            req.encode(&mut data)?;
-
-            match manipulate_se.try_write(&data) {
-                Ok(_) => {
-                    tracing::info!("instruct send success!");
-                    break;
-                }
-                Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
-                    continue;
-                }
-                Err(e) => {
-                    return Err(e.into());
-                }
+            Err(e) => {
+                return Err(e.into());
             }
         }
     }
+    loop {
+        tracing::debug!("instruct send start");
+        instruct_se.writable().await.unwrap();
 
+        let req = InstructReq {
+            instruct_type: InstructType::DefaultType.into(),
+            message: vec!["测试".to_string(), "成功！".to_string()],
+        };
+        // let mut data = vec![0; 1024];
+        // req.encode(&mut data)?;
+
+        match instruct_se.try_write(&req.encode_to_vec()) {
+            Ok(_) => {
+                tracing::info!("instruct send success!");
+                break;
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                continue;
+            }
+            Err(e) => {
+                return Err(e.into());
+            }
+        }
+    }
+    loop {
+        tracing::debug!("manipulate send start");
+        manipulate_se.writable().await.unwrap();
+
+        let req = ManipulateReq {
+            manipulate_type: ManipulateType::DefaultType.into(),
+            command: "test".to_string(),
+        };
+        // let mut data = vec![0; 1024];
+        // req.encode(&mut data)?;
+
+        match manipulate_se.try_write(&req.encode_to_vec()) {
+            Ok(_) => {
+                tracing::info!("instruct send success!");
+                break;
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                continue;
+            }
+            Err(e) => {
+                return Err(e.into());
+            }
+        }
+    }
+    Ok(())
+}
+
+async fn instruct_receiver(instruct_rx: &Receiver) -> Result<(), Box<dyn Error>> {
+    instruct_rx.readable().await?;
+    let mut msg = vec![0; 1024];
+
+    match instruct_rx.try_read(&mut msg) {
+        Ok(n) => {
+            if n > 0 {
+                tracing::debug!("read {} byte", n);
+            }
+        }
+        Err(e) if e.kind() == io::ErrorKind::WouldBlock => {}
+        Err(e) => {
+            return Err(Box::new(e));
+        }
+    }
+    Ok(())
+}
+
+async fn manipulate_receiver(manipulate_rx: &Receiver) -> Result<(), Box<dyn Error>> {
+    manipulate_rx.readable().await?;
+    let mut msg = vec![0; 1024];
+
+    match manipulate_rx.try_read(&mut msg) {
+        Ok(n) => {
+            if n > 0 {
+                tracing::debug!("read {} byte", n);
+            }
+        }
+        Err(e) if e.kind() == io::ErrorKind::WouldBlock => {}
+        Err(e) => {
+            return Err(Box::new(e));
+        }
+    }
     Ok(())
 }
 

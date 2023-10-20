@@ -1,5 +1,6 @@
 use thiserror::Error;
-use crate::alternate::module;
+
+use crate::alternate;
 
 #[derive(Error, Debug)]
 pub enum  AppError {
@@ -19,19 +20,28 @@ pub enum  AppError {
     PipeError(String),
 
     #[error("Module Mpsc进程通讯发送错误！")]
-    ModuleMpscMessageError(#[from] tokio::sync::mpsc::error::SendError<module::Module>),
+    ModuleMpscMessageError(#[from] tokio::sync::mpsc::error::SendError<alternate::module::Module>),
 
-    #[error("Instruct Mpsc进程通讯发送错误！")]
-    InstructMpscMessageError(#[from] tokio::sync::mpsc::error::SendError<module::InstructEntity>),
+    #[error("Instruct Mpsc unexpected shutdown")]
+    InstructMpscMessageError(#[from] tokio::sync::mpsc::error::SendError<alternate::module::InstructEntity>),
 
     #[error("Manipulate Mpsc进程通讯发送错误！")]
-    ManipulateMpscMessageError(#[from] tokio::sync::mpsc::error::SendError<module::ManipulateEntity>),
+    ManipulateMpscMessageError(#[from] tokio::sync::mpsc::error::SendError<alternate::module::ManipulateEntity>),
 
     #[error("Tonic错误！")]
     TonicError(#[from] tonic::Status),
 
+    #[error("{0}枚举转换错误！")]
+    ProstTransferError(String),
+
     #[error("prost 解码错误！")]
     DecodeError(#[from] prost::DecodeError),
+
+    #[error("prost 编码错误！")]
+    EncodeError(#[from] prost::EncodeError),
+
+    #[error("指令编码模块错误！{0}")]
+    OrtError(#[from] ort::OrtError),
 
     #[error("操作系统不支持！")]
     OsNotSupportError,
@@ -51,6 +61,6 @@ pub enum  AppError {
     #[error("系统IO异常！")]
     SystemIOException(#[from] std::io::Error),
 
-    #[error("未知内部错误！")]
-    OtherError,
+    #[error(transparent)]
+    Other(#[from] anyhow::Error),
 }
