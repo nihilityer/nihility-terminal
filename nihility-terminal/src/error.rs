@@ -1,9 +1,10 @@
 use thiserror::Error;
 
-use crate::alternate;
+#[cfg(unix)]
+use crate::entity;
 
 #[derive(Error, Debug)]
-pub enum  AppError {
+pub enum AppError {
     #[error("应用{0}模块配置错误！")]
     ConfigError(String),
 
@@ -19,14 +20,21 @@ pub enum  AppError {
     #[error("管道通讯{0}错误！")]
     PipeError(String),
 
+    #[cfg(unix)]
     #[error("Module Mpsc进程通讯发送错误！")]
-    ModuleMpscMessageError(#[from] tokio::sync::mpsc::error::SendError<alternate::module::Module>),
+    ModuleMpscMessageError(#[from] tokio::sync::mpsc::error::SendError<entity::module::Module>),
 
+    #[cfg(unix)]
     #[error("Instruct Mpsc unexpected shutdown")]
-    InstructMpscMessageError(#[from] tokio::sync::mpsc::error::SendError<alternate::module::InstructEntity>),
+    InstructMpscMessageError(
+        #[from] tokio::sync::mpsc::error::SendError<entity::module::InstructEntity>,
+    ),
 
+    #[cfg(unix)]
     #[error("Manipulate Mpsc进程通讯发送错误！")]
-    ManipulateMpscMessageError(#[from] tokio::sync::mpsc::error::SendError<alternate::module::ManipulateEntity>),
+    ManipulateMpscMessageError(
+        #[from] tokio::sync::mpsc::error::SendError<entity::module::ManipulateEntity>,
+    ),
 
     #[error("Tonic错误！")]
     TonicError(#[from] tonic::Status),

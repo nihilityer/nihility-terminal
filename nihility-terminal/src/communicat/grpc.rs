@@ -1,25 +1,16 @@
 use tokio::sync::mpsc::Sender;
+
+use nihility_common::instruct::instruct_server::Instruct;
+use nihility_common::instruct::{InstructReq, InstructResp};
+use nihility_common::manipulate::manipulate_server::Manipulate;
+use nihility_common::manipulate::{ManipulateReq, ManipulateResp};
+use nihility_common::module_info::module_info_server::ModuleInfo;
+use nihility_common::module_info::{ModuleInfoReq, ModuleInfoResp};
 use tonic::{Request, Response, Status};
 
-use nihility_common::{
-    instruct::{
-        instruct_server::Instruct,
-        InstructReq,
-        InstructResp,
-    },
-    manipulate::{
-        manipulate_server::Manipulate,
-        ManipulateReq,
-        ManipulateResp,
-    },
-    module_info::{
-        module_info_server::ModuleInfo,
-        ModuleInfoReq,
-        ModuleInfoResp,
-    }
-};
-
-use crate::alternate::module::{InstructEntity, ManipulateEntity, Module};
+use crate::entity::instruct::InstructEntity;
+use crate::entity::manipulate::ManipulateEntity;
+use crate::entity::module::Module;
 
 pub struct ModuleInfoImpl {
     module_sender: Sender<Module>,
@@ -35,42 +26,45 @@ pub struct ManipulateImpl {
 
 #[tonic::async_trait]
 impl ModuleInfo for ModuleInfoImpl {
-    async fn register(&self, request: Request<ModuleInfoReq>) -> Result<Response<ModuleInfoResp>, Status> {
+    async fn register(
+        &self,
+        request: Request<ModuleInfoReq>,
+    ) -> Result<Response<ModuleInfoResp>, Status> {
         let module = Module::create_by_req(request.into_inner()).await.unwrap();
         tracing::info!("start register module:{}", &module.name);
         self.module_sender.send(module).await.unwrap();
-        Ok(Response::new(ModuleInfoResp {
-            success: true,
-        }))
+        Ok(Response::new(ModuleInfoResp { success: true }))
     }
 }
 
 #[tonic::async_trait]
 impl Instruct for InstructImpl {
-    async fn send_instruct(&self, request: Request<InstructReq>) -> Result<Response<InstructResp>, Status> {
+    async fn send_instruct(
+        &self,
+        request: Request<InstructReq>,
+    ) -> Result<Response<InstructResp>, Status> {
         let instruct = InstructEntity::create_by_req(request.into_inner());
         tracing::info!("get instruct:{:?}", instruct);
         self.instruct_sender.send(instruct).await.unwrap();
-        Ok(Response::new(InstructResp {
-            status: true,
-        }))
+        Ok(Response::new(InstructResp { status: true }))
     }
 }
 
 #[tonic::async_trait]
 impl Manipulate for ManipulateImpl {
-    async fn send_manipulate(&self, request: Request<ManipulateReq>) -> Result<Response<ManipulateResp>, Status> {
+    async fn send_manipulate(
+        &self,
+        request: Request<ManipulateReq>,
+    ) -> Result<Response<ManipulateResp>, Status> {
         let manipulate = ManipulateEntity::create_by_req(request.into_inner());
         tracing::info!("get manipulate:{:?}", manipulate);
         self.manipulate_sender.send(manipulate).await.unwrap();
-        Ok(Response::new(ManipulateResp {
-            status: true,
-        }))
+        Ok(Response::new(ManipulateResp { status: true }))
     }
 }
 
 impl ModuleInfoImpl {
-    pub fn init(sender: Sender<Module>) -> Self{
+    pub fn init(sender: Sender<Module>) -> Self {
         ModuleInfoImpl {
             module_sender: sender,
         }

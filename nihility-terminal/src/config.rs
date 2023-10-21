@@ -1,28 +1,28 @@
-use std::{path::Path, fs::File, io::Write, fs};
+use std::fs::File;
+use std::io::Write;
+use std::path::Path;
+
+use figment::Figment;
+use figment::providers::{Format, Json, Serialized};
 use local_ip_address::local_ip;
 use serde::{Deserialize, Serialize};
-use serde_json;
-use figment::{
-    providers::{Format, Json, Serialized},
-    Figment
-};
+
 use crate::error::AppError;
 
-/*
-总配置
- */
+/// 总配置
 #[derive(Deserialize, Serialize)]
 pub struct SummaryConfig {
     pub log: LogConfig,
     pub grpc: GrpcConfig,
+    #[cfg(unix)]
     pub pipe: PipeConfig,
+    #[cfg(windows)]
+    pub windows_pipe: PipeWindowsConfig,
     pub multicast: MulticastConfig,
     pub module_manager: ModuleManagerConfig,
 }
 
-/*
-日志相关配置
- */
+/// 日志相关配置
 #[derive(Deserialize, Serialize)]
 pub struct LogConfig {
     pub enable: bool,
@@ -33,9 +33,7 @@ pub struct LogConfig {
     pub with_target: bool,
 }
 
-/*
-Grpc相关配置
- */
+/// Grpc相关配置
 #[derive(Deserialize, Serialize)]
 pub struct GrpcConfig {
     pub enable: bool,
@@ -43,21 +41,11 @@ pub struct GrpcConfig {
     pub port: u32,
 }
 
-/*
-管道通信相关配置
- */
+/// unix管道通信相关配置
 #[derive(Deserialize, Serialize)]
+#[cfg(unix)]
 pub struct PipeConfig {
     pub enable: bool,
-    pub unix: PipeUnixConfig,
-    pub windows: PipeWindowsConfig,
-}
-
-/*
-unix管道通信相关配置
- */
-#[derive(Deserialize, Serialize)]
-pub struct PipeUnixConfig {
     pub directory: String,
     pub module: String,
     pub instruct_receiver: String,
@@ -66,19 +54,16 @@ pub struct PipeUnixConfig {
     pub manipulate_sender: String,
 }
 
-/*
-windows管道通信相关配置
- */
+/// windows管道通信相关配置
 #[derive(Deserialize, Serialize)]
 pub struct PipeWindowsConfig {
     // TODO
+    pub enable: bool,
     pub addr: String,
     pub port: u32,
 }
 
-/*
-组播相关配置
- */
+/// 组播相关配置
 #[derive(Deserialize, Serialize)]
 pub struct MulticastConfig {
     pub enable: bool,
@@ -90,10 +75,9 @@ pub struct MulticastConfig {
     pub interval: u32,
 }
 
-/*
-子模块管理相关配置（核心配置）
-目前没有多少能正常配置的
- */
+/// 子模块管理相关配置（核心配置）
+///
+/// 目前没有多少能正常配置的
 #[derive(Deserialize, Serialize)]
 pub struct ModuleManagerConfig {
     pub interval: u32,
@@ -103,7 +87,6 @@ pub struct ModuleManagerConfig {
 }
 
 impl SummaryConfig {
-
     fn default() -> Result<Self, AppError> {
         let local_ip_addr = local_ip()?;
 
@@ -122,9 +105,16 @@ impl SummaryConfig {
             port: 5050,
         };
 
-        let work_dir = fs::canonicalize("../")?.to_str().ok_or(AppError::ConfigError("create workdir config".to_string()))?.to_string();
+        #[cfg(unix)]
+        let work_dir = std::fs::canonicalize("../")?
+            .to_str()
+            .ok_or(AppError::ConfigError("create workdir config".to_string()))?
+            .to_string();
+        #[cfg(unix)]
         let work_dir = format!("{}/communication", work_dir);
-        let pipe_unix_config = PipeUnixConfig {
+        #[cfg(unix)]
+        let pipe_config = PipeConfig {
+            enable: true,
             directory: work_dir,
             module: "module".to_string(),
             instruct_receiver: "instruct_receiver".to_string(),
@@ -133,15 +123,11 @@ impl SummaryConfig {
             manipulate_sender: "manipulate_sender".to_string(),
         };
 
+        #[cfg(windows)]
         let pipe_windows_config = PipeWindowsConfig {
+            enable: true,
             addr: "todo".to_string(),
             port: 1111,
-        };
-
-        let pipe_config = PipeConfig {
-            enable: true,
-            unix: pipe_unix_config,
-            windows: pipe_windows_config,
         };
 
         let mut multicast_info = grpc_config.addr.to_string();
@@ -160,28 +146,33 @@ impl SummaryConfig {
             interval: 1,
             channel_buffer: 10,
             encode_model_path: "model".to_string(),
-            encode_model_name: "onnx_bge_small_zh".to_string()
+            encode_model_name: "onnx_bge_small_zh".to_string(),
         };
 
-        Ok(SummaryConfig {
+        #[cfg(unix)]
+        return Ok(SummaryConfig {
             log: log_config,
             grpc: grpc_config,
             pipe: pipe_config,
             multicast: multicast_config,
             module_manager: module_manager_config,
-        })
+        });
+        #[cfg(windows)]
+        return Ok(SummaryConfig {
+            log: log_config,
+            grpc: grpc_config,
+            windows_pipe: pipe_windows_config,
+            multicast: multicast_config,
+            module_manager: module_manager_config,
+        });
     }
 
-    /*
-    当配置文件不存在时使用默认配置
-     */
+    /// 当配置文件不存在时使用默认配置当配置文件不存在时使用默认配置
     pub fn init() -> Result<Self, AppError> {
-
         let mut config = SummaryConfig::default()?;
 
         if !Path::try_exists("config.json".as_ref())? {
-            println!("未找到配置文件，开始使用默认设置");
-            config.pipe.enable = true;
+            println!("can not find config");
             config.grpc.enable = false;
             config.multicast.enable = false;
 
@@ -190,7 +181,7 @@ impl SummaryConfig {
             config_file.write_all(serde_json::to_string_pretty(&config)?.as_bytes())?;
             config_file.flush()?;
 
-            return Ok(config)
+            return Ok(config);
         }
         let result: SummaryConfig = Figment::from(Serialized::defaults(config))
             .merge(Json::file("config.json"))
