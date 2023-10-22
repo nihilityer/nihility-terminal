@@ -3,11 +3,15 @@ use std::io::Write;
 use std::path::Path;
 
 use figment::Figment;
-use figment::providers::{Format, Json, Serialized};
+use figment::providers::{Format, Json, Serialized, Toml, Yaml};
 use local_ip_address::local_ip;
 use serde::{Deserialize, Serialize};
 
 use crate::error::AppError;
+
+const JSON_CONFIG_FILE_NAME: &str = "config.json";
+const TOML_CONFIG_FILE_NAME: &str = "config.toml";
+const YAML_CONFIG_FILE_NAME: &str = "config.yaml";
 
 /// 总配置
 #[derive(Deserialize, Serialize)]
@@ -56,6 +60,7 @@ pub struct PipeConfig {
 
 /// windows管道通信相关配置
 #[derive(Deserialize, Serialize)]
+#[cfg(windows)]
 pub struct PipeWindowsConfig {
     // TODO
     pub enable: bool,
@@ -171,21 +176,29 @@ impl SummaryConfig {
     pub fn init() -> Result<Self, AppError> {
         let mut config = SummaryConfig::default()?;
 
-        if !Path::try_exists("config.json".as_ref())? {
-            println!("can not find config");
+        return if Path::try_exists(TOML_CONFIG_FILE_NAME.as_ref())? {
+            let result: SummaryConfig = Figment::from(Serialized::defaults(config))
+                .merge(Toml::file(TOML_CONFIG_FILE_NAME))
+                .extract()?;
+            Ok(result)
+        } else if Path::try_exists(YAML_CONFIG_FILE_NAME.as_ref())? {
+            let result: SummaryConfig = Figment::from(Serialized::defaults(config))
+                .merge(Yaml::file(YAML_CONFIG_FILE_NAME))
+                .extract()?;
+            Ok(result)
+        } else if Path::try_exists(JSON_CONFIG_FILE_NAME.as_ref())? {
+            let result: SummaryConfig = Figment::from(Serialized::defaults(config))
+                .merge(Json::file(JSON_CONFIG_FILE_NAME))
+                .extract()?;
+            Ok(result)
+        } else {
             config.grpc.enable = false;
             config.multicast.enable = false;
 
-            let mut config_file = File::create("config.json")?;
-
-            config_file.write_all(serde_json::to_string_pretty(&config)?.as_bytes())?;
+            let mut config_file = File::create(TOML_CONFIG_FILE_NAME)?;
+            config_file.write_all(toml::to_string_pretty(&config)?.as_bytes())?;
             config_file.flush()?;
-
-            return Ok(config);
+            Ok(config)
         }
-        let result: SummaryConfig = Figment::from(Serialized::defaults(config))
-            .merge(Json::file("config.json"))
-            .extract()?;
-        Ok(result)
     }
 }

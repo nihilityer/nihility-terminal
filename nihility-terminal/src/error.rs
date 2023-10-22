@@ -63,8 +63,8 @@ pub enum AppError {
     #[error("Grpc服务启动异常！")]
     GrpcServerStartException(#[from] tonic::transport::Error),
 
-    #[error("Json转换异常！")]
-    JsonException(#[from] serde_json::Error),
+    #[error("Toml转换异常！")]
+    JsonException(#[from] toml::ser::Error),
 
     #[error("系统IO异常！")]
     SystemIOException(#[from] std::io::Error),
