@@ -108,7 +108,7 @@ impl NihilityTerminal {
         test_instruct_se.send(
             InstructEntity {
                 instruct_type: InstructType::DefaultType,
-                message: vec!["test try".to_string()],
+                message: vec!["说，你是猪".to_string()],
             }
         ).await;
         #[cfg(unix)]

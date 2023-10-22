@@ -1,6 +1,6 @@
 use std::ops::Deref;
 
-use ndarray::{Array1, Axis, CowArray};
+use ndarray::{Array1, ArrayView, Axis, CowArray, IxDyn};
 use ort::{Environment, ExecutionProvider, GraphOptimizationLevel, Session, SessionBuilder, Value};
 use ort::tensor::OrtOwnedTensor;
 use tokenizers::Tokenizer;
@@ -92,9 +92,13 @@ impl InstructEncoder {
         tracing::debug!("onnx inputs: {:?}", &inputs);
         let outputs: Vec<Value> = self.ort_session.run(inputs)?;
         let generated_tokens: OrtOwnedTensor<f32, _> = outputs[0].try_extract()?;
+        let encode_result = generated_tokens.view();
+        let encode_result = encode_result.deref().index_axis(Axis(0), 0);
 
-        if let Some(result) = generated_tokens.view().deref().to_slice() {
+        if let Some(result) = encode_result.mean_axis(Axis(0)) {
             let result = result.iter().cloned().into_iter().collect::<Vec<f32>>();
+            tracing::debug!("encode result len:{:?}", result.len());
+            tracing::debug!("encode result:{:?}", &result);
             return Ok(result);
         } else {
             return Err(AppError::ModuleManagerError("encode error".to_string()));

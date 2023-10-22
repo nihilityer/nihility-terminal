@@ -87,9 +87,11 @@ impl ModuleManager {
             tracing::info!("from mpsc receiver get instruct：{:?}", &instruct);
             for message in instruct.message {
                 if let Ok(mut encoder) = instruct_encoder.lock() {
-                    let result = encoder.encode(message)?;
-                    tracing::info!("encode result len: {}", result.len());
-                    tracing::info!("encode result: {:?}", result)
+                    let v1 = encoder.encode(message)?;
+                    let v2 = encoder.encode("说，你是狗".to_string())?;
+                    let v3 = encoder.encode("说你是猪".to_string())?;
+                    tracing::info!("cosine_similarity:{}", cosine_similarity(&v1, &v2));
+                    tracing::info!("cosine_similarity:{}", cosine_similarity(&v1, &v3));
                 } else {
                     return Err(AppError::ModuleManagerError(
                         "Failed to obtain encoder lock".to_string(),
@@ -125,4 +127,20 @@ impl ModuleManager {
         }
         Ok(())
     }
+}
+
+fn cosine_similarity(vec1: &Vec<f32>, vec2: &Vec<f32>) -> f32 {
+    if vec1.len() != vec2.len() || vec1.is_empty() {
+        panic!("Input vectors must have the same length and cannot be empty.");
+    }
+
+    let dot_product = vec1.iter().zip(vec2.iter()).map(|(a, b)| a * b).sum::<f32>();
+    let magnitude1 = vec1.iter().map(|x| x * x).sum::<f32>().sqrt();
+    let magnitude2 = vec2.iter().map(|x| x * x).sum::<f32>().sqrt();
+
+    if magnitude1 == 0.0 || magnitude2 == 0.0 {
+        return 0.0; // Handle division by zero
+    }
+
+    dot_product / (magnitude1 * magnitude2)
 }
