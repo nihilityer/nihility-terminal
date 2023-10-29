@@ -1,19 +1,21 @@
+use async_trait::async_trait;
 use std::sync::{Arc, Mutex};
 
 use tokio::sync::mpsc::Receiver;
 
-use crate::AppError;
-use crate::config::SummaryConfig;
-use crate::core::encoder::InstructEncoder;
+use crate::core::encoder::Encoder;
+use crate::core::module_manager::ModuleManager;
 use crate::entity::instruct::InstructEntity;
 use crate::entity::manipulate::ManipulateEntity;
 use crate::entity::module::Module;
+use crate::AppError;
 
-pub struct ModuleManager;
+pub struct GrpcQrdant;
 
-impl ModuleManager {
-    pub async fn start(
-        summary_config: &SummaryConfig,
+#[async_trait]
+impl ModuleManager for GrpcQrdant {
+    async fn start(
+        encoder: Arc<Mutex<Box<dyn Encoder + Send>>>,
         module_receiver: Receiver<Module>,
         instruct_receiver: Receiver<InstructEntity>,
         manipulate_receiver: Receiver<ManipulateEntity>,
@@ -23,14 +25,9 @@ impl ModuleManager {
         let instruct_module_list = module_list.clone();
         let manipulate_module_list = module_list.clone();
 
-        let instruct_encoder = InstructEncoder::init(
-            &summary_config.module_manager.encode_model_path,
-            &summary_config.module_manager.encode_model_name,
-        )?;
-        let module_encoder = Arc::new(Mutex::new(instruct_encoder));
-        let instruct_encoder = module_encoder.clone();
+        let instruct_encoder = encoder.clone();
 
-        let module_feature = Self::manager_module(module_list, module_receiver, module_encoder);
+        let module_feature = Self::manager_module(module_list, module_receiver, encoder);
 
         let instruct_feature =
             Self::manager_instruct(instruct_module_list, instruct_receiver, instruct_encoder);
@@ -42,7 +39,9 @@ impl ModuleManager {
 
         Ok(())
     }
+}
 
+impl GrpcQrdant {
     /// 处理操作的接收和转发
     ///
     /// 1、通过操作实体转发操作
@@ -80,7 +79,7 @@ impl ModuleManager {
     async fn manager_instruct(
         module_list: Arc<Mutex<Vec<Module>>>,
         mut instruct_receiver: Receiver<InstructEntity>,
-        instruct_encoder: Arc<Mutex<InstructEncoder>>,
+        instruct_encoder: Arc<Mutex<Box<dyn Encoder + Send>>>,
     ) -> Result<(), AppError> {
         tracing::debug!("instruct_receiver start recv");
         while let Some(instruct) = instruct_receiver.recv().await {
@@ -94,7 +93,7 @@ impl ModuleManager {
                     tracing::info!("cosine_similarity:{}", cosine_similarity(&v1, &v3));
                 } else {
                     return Err(AppError::ModuleManagerError(
-                        "Failed to obtain encoder lock".to_string(),
+                        "Failed to obtain sbert lock".to_string(),
                     ));
                 }
             }
@@ -112,7 +111,7 @@ impl ModuleManager {
     async fn manager_module(
         module_list: Arc<Mutex<Vec<Module>>>,
         mut module_receiver: Receiver<Module>,
-        instruct_encoder: Arc<Mutex<InstructEncoder>>,
+        instruct_encoder: Arc<Mutex<Box<dyn Encoder + Send>>>,
     ) -> Result<(), AppError> {
         tracing::debug!("module_receiver start recv");
         while let Some(module) = module_receiver.recv().await {
@@ -134,7 +133,11 @@ fn cosine_similarity(vec1: &Vec<f32>, vec2: &Vec<f32>) -> f32 {
         panic!("Input vectors must have the same length and cannot be empty.");
     }
 
-    let dot_product = vec1.iter().zip(vec2.iter()).map(|(a, b)| a * b).sum::<f32>();
+    let dot_product = vec1
+        .iter()
+        .zip(vec2.iter())
+        .map(|(a, b)| a * b)
+        .sum::<f32>();
     let magnitude1 = vec1.iter().map(|x| x * x).sum::<f32>().sqrt();
     let magnitude2 = vec2.iter().map(|x| x * x).sum::<f32>().sqrt();
 

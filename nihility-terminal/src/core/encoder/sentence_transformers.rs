@@ -1,28 +1,29 @@
 use std::ops::Deref;
 
-use ndarray::{Array1, ArrayView, Axis, CowArray, IxDyn};
-use ort::{Environment, ExecutionProvider, GraphOptimizationLevel, Session, SessionBuilder, Value};
+use ndarray::{Array1, Axis, CowArray};
 use ort::tensor::OrtOwnedTensor;
+use ort::{Environment, ExecutionProvider, GraphOptimizationLevel, Session, SessionBuilder, Value};
 use tokenizers::Tokenizer;
 
+use crate::core::encoder::Encoder;
 use crate::AppError;
 
-pub struct InstructEncoder {
+pub struct SentenceTransformers {
     pub ort_session: Session,
     pub tokenizer: Tokenizer,
 }
 
-impl InstructEncoder {
-    pub fn init(
-        model_path: &String,
-        model_name: &String
-    ) -> Result<InstructEncoder, AppError> {
+impl Encoder for SentenceTransformers {
+    fn init(model_path: String, model_name: String) -> Result<Self, AppError>
+    where
+        Self: Sized,
+    {
         let onnx_model_path = format!("{}/{}/model.onnx", model_path, model_name);
         let tokenizers_config_path = format!("{}/{}/tokenizer.json", model_path, model_name);
         tracing::debug!("onnx_model_path:{}", &onnx_model_path);
         tracing::debug!("tokenizers_config_path:{}", &tokenizers_config_path);
         let environment = Environment::builder()
-            .with_name("encoder")
+            .with_name("SentenceTransformers")
             .with_execution_providers([ExecutionProvider::CPU(Default::default())])
             .build()?
             .into_arc();
@@ -32,13 +33,14 @@ impl InstructEncoder {
 
         let tokenizer = Tokenizer::from_file(tokenizers_config_path).unwrap();
 
-        Ok(InstructEncoder {
+        let encoder = SentenceTransformers {
             ort_session: session,
             tokenizer,
-        })
+        };
+        Ok(encoder)
     }
 
-    pub fn encode(&mut self, input: String) -> Result<Vec<f32>, AppError> {
+    fn encode(&mut self, input: String) -> Result<Vec<f32>, AppError> {
         let encoding = self.tokenizer.encode(input, false).unwrap();
         tracing::debug!("encoding: {:?}", &encoding);
 
@@ -98,7 +100,6 @@ impl InstructEncoder {
         if let Some(result) = encode_result.mean_axis(Axis(0)) {
             let result = result.iter().cloned().into_iter().collect::<Vec<f32>>();
             tracing::debug!("encode result len:{:?}", result.len());
-            tracing::debug!("encode result:{:?}", &result);
             return Ok(result);
         } else {
             return Err(AppError::ModuleManagerError("encode error".to_string()));

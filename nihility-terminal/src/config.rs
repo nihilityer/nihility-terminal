@@ -21,9 +21,10 @@ pub struct SummaryConfig {
     #[cfg(unix)]
     pub pipe: PipeConfig,
     #[cfg(windows)]
-    pub windows_pipe: PipeWindowsConfig,
+    pub windows_named_pipes: WindowsNamedPipesConfig,
     pub multicast: MulticastConfig,
     pub module_manager: ModuleManagerConfig,
+    pub encoder: EncoderConfig,
 }
 
 /// 日志相关配置
@@ -46,6 +47,8 @@ pub struct GrpcConfig {
 }
 
 /// unix管道通信相关配置
+///
+/// 注：仅在unix系统上支持
 #[derive(Deserialize, Serialize)]
 #[cfg(unix)]
 pub struct PipeConfig {
@@ -61,7 +64,7 @@ pub struct PipeConfig {
 /// windows管道通信相关配置
 #[derive(Deserialize, Serialize)]
 #[cfg(windows)]
-pub struct PipeWindowsConfig {
+pub struct WindowsNamedPipesConfig {
     // TODO
     pub enable: bool,
     pub addr: String,
@@ -85,10 +88,17 @@ pub struct MulticastConfig {
 /// 目前没有多少能正常配置的
 #[derive(Deserialize, Serialize)]
 pub struct ModuleManagerConfig {
+    pub manager_type: String,
     pub interval: u32,
     pub channel_buffer: usize,
-    pub encode_model_path: String,
-    pub encode_model_name: String,
+}
+
+/// 指令编码模块配置
+#[derive(Deserialize, Serialize)]
+pub struct EncoderConfig {
+    pub encoder_type: String,
+    pub model_path: String,
+    pub model_name: String,
 }
 
 impl SummaryConfig {
@@ -129,7 +139,7 @@ impl SummaryConfig {
         };
 
         #[cfg(windows)]
-        let pipe_windows_config = PipeWindowsConfig {
+        let windows_named_pipes_config = WindowsNamedPipesConfig {
             enable: true,
             addr: "todo".to_string(),
             port: 1111,
@@ -148,10 +158,15 @@ impl SummaryConfig {
         };
 
         let module_manager_config = ModuleManagerConfig {
+            manager_type: "grpc_qrdant".to_string(),
             interval: 1,
             channel_buffer: 10,
-            encode_model_path: "model".to_string(),
-            encode_model_name: "onnx_bge_small_zh".to_string(),
+        };
+
+        let encoder_config = EncoderConfig {
+            encoder_type: "sentence_transformers".to_string(),
+            model_path: "model".to_string(),
+            model_name: "onnx_bge_small_zh".to_string(),
         };
 
         #[cfg(unix)]
@@ -161,14 +176,16 @@ impl SummaryConfig {
             pipe: pipe_config,
             multicast: multicast_config,
             module_manager: module_manager_config,
+            encoder: encoder_config,
         });
         #[cfg(windows)]
         return Ok(SummaryConfig {
             log: log_config,
             grpc: grpc_config,
-            windows_pipe: pipe_windows_config,
+            windows_named_pipes: windows_named_pipes_config,
             multicast: multicast_config,
             module_manager: module_manager_config,
+            encoder: encoder_config,
         });
     }
 

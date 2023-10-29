@@ -17,6 +17,9 @@ pub enum AppError {
     #[error("模块管理中{0}错误！")]
     ModuleManagerError(String),
 
+    #[error("编码模块：{0}错误！")]
+    EncoderError(String),
+
     #[error("管道通讯{0}错误！")]
     PipeError(String),
 
@@ -46,7 +49,7 @@ pub enum AppError {
     DecodeError(#[from] prost::DecodeError),
 
     #[error("prost 编码错误！")]
-    EncodeError(#[from] prost::EncodeError),
+    ProstEncodeError(#[from] prost::EncodeError),
 
     #[error("指令编码模块错误！{0}")]
     OrtError(#[from] ort::OrtError),

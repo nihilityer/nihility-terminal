@@ -7,8 +7,9 @@ use tokio::sync::mpsc;
 use tracing::Level;
 
 use crate::config::SummaryConfig;
+use crate::core::encoder;
 use crate::core::grpc::GrpcServer;
-use crate::core::module_manager::ModuleManager;
+use crate::core::module_manager;
 use crate::core::multicast::Multicast;
 #[cfg(unix)]
 use crate::core::pipe::PipeProcessor;
@@ -97,20 +98,22 @@ impl NihilityTerminal {
             pipe_instruct_se,
             pipe_manipulate_se,
         );
-        let module_manager_future = ModuleManager::start(
-            &summary_config,
+        let encoder = encoder::encoder_builder(&summary_config.encoder)?;
+        let module_manager_future = module_manager::module_manager_builder(
+            &summary_config.module_manager,
+            encoder,
             module_re,
             instruct_re,
-            manipulate_re
+            manipulate_re,
         );
 
         tracing::info!("start run");
-        test_instruct_se.send(
-            InstructEntity {
+        test_instruct_se
+            .send(InstructEntity {
                 instruct_type: InstructType::DefaultType,
                 message: vec!["说，你是猪".to_string()],
-            }
-        ).await;
+            })
+            .await;
         #[cfg(unix)]
         tokio::try_join!(
             multicaster_future,
