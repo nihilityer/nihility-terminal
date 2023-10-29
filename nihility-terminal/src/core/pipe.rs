@@ -27,25 +27,10 @@ impl PipeProcessor {
         instruct_sender: Sender<InstructEntity>,
         manipulate_sender: Sender<ManipulateEntity>,
     ) -> Result<(), AppError> {
-        if pipe_config.enable {
-            tracing::debug!("PipeProcessor start!");
-            Self::unix_pipe_processor(
-                &pipe_config,
-                module_sender,
-                instruct_sender,
-                manipulate_sender,
-            ).await?;
+        if !pipe_config.enable {
+            return Ok(());
         }
-        Ok(())
-    }
-
-    /// pipe通信模块
-    async fn unix_pipe_processor(
-        pipe_config: &PipeConfig,
-        module_sender: Sender<Module>,
-        instruct_sender: Sender<InstructEntity>,
-        manipulate_sender: Sender<ManipulateEntity>,
-    ) -> Result<(), AppError> {
+        tracing::debug!("PipeProcessor start!");
         if !Path::try_exists(&pipe_config.unix.directory.as_ref())? {
             fs::create_dir_all(&pipe_config.unix.directory)?;
         }

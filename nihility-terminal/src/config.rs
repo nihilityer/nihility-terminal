@@ -56,19 +56,18 @@ pub struct PipeConfig {
     pub directory: String,
     pub module: String,
     pub instruct_receiver: String,
-    pub instruct_sender: String,
     pub manipulate_receiver: String,
-    pub manipulate_sender: String,
 }
 
 /// windows管道通信相关配置
 #[derive(Deserialize, Serialize)]
 #[cfg(windows)]
 pub struct WindowsNamedPipesConfig {
-    // TODO
     pub enable: bool,
-    pub addr: String,
-    pub port: u32,
+    pub pipe_prefix: String,
+    pub module_pipe_name: String,
+    pub instruct_pipe_name: String,
+    pub manipulate_pipe_name: String,
 }
 
 /// 组播相关配置
@@ -133,16 +132,16 @@ impl SummaryConfig {
             directory: work_dir,
             module: "module".to_string(),
             instruct_receiver: "instruct_receiver".to_string(),
-            instruct_sender: "instruct_sender".to_string(),
             manipulate_receiver: "manipulate_receiver".to_string(),
-            manipulate_sender: "manipulate_sender".to_string(),
         };
 
         #[cfg(windows)]
         let windows_named_pipes_config = WindowsNamedPipesConfig {
             enable: true,
-            addr: "todo".to_string(),
-            port: 1111,
+            pipe_prefix: r"\\.\pipe\nihilityer".to_string(),
+            module_pipe_name: "module".to_string(),
+            instruct_pipe_name: "master_instruct".to_string(),
+            manipulate_pipe_name: "manipulate".to_string(),
         };
 
         let mut multicast_info = grpc_config.addr.to_string();
