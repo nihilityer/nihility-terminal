@@ -21,4 +21,4 @@ ndarray = "0.15"
 ort = {version = "1.16", features = ["half", "load-dynamic"], default-features = false}
 tokenizers = "0.14"
 figment = { version = "0.10", features = ["json", "toml", "yaml"] }
-nihility-common = { path = "../nihility-common" }
+nihility-common = { git = "https://git.nihilityer.top:8443/nihilityer/nihility-common" }
