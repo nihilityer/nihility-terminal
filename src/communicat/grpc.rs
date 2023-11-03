@@ -31,7 +31,7 @@ impl ModuleInfo for ModuleInfoImpl {
         request: Request<ModuleInfoReq>,
     ) -> Result<Response<ModuleInfoResp>, Status> {
         let module = Module::create_by_req(request.into_inner()).await.unwrap();
-        tracing::info!("start register module:{}", &module.name);
+        tracing::info!("start register model:{}", &module.name);
         self.module_sender.send(module).await.unwrap();
         Ok(Response::new(ModuleInfoResp { success: true }))
     }

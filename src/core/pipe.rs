@@ -54,7 +54,7 @@ impl PipeProcessor {
 
         if !Path::try_exists(&module_path.as_ref())? {
             tracing::debug!(
-                "cannot found module pipe file, try create on {}",
+                "cannot found model pipe file, try create on {}",
                 &module_path
             );
             Command::new("mkfifo").arg(&module_path).output()?;
@@ -76,7 +76,7 @@ impl PipeProcessor {
 
         tracing::debug!("start create pipe from file");
         let module_rx = OpenOptions::new().open_receiver(&module_path)?;
-        tracing::debug!("module pipe create success");
+        tracing::debug!("model pipe create success");
         let instruct_rx = OpenOptions::new().open_receiver(&instruct_path)?;
         tracing::debug!("instruct pipe create success");
         let manipulate_rx = OpenOptions::new().open_receiver(&manipulate_path)?;
@@ -101,14 +101,14 @@ impl PipeProcessor {
             Ok(n) => {
                 if n > 0 {
                     let result: ModuleInfoReq = ModuleInfoReq::decode(&msg[..n])?;
-                    tracing::debug!("pipe module name:{:?}", &result.name);
+                    tracing::debug!("pipe model name:{:?}", &result.name);
                     let model = Module::create_by_req(result).await?;
                     module_sender.send(model).await?;
                 }
             }
             Err(e) if e.kind() == io::ErrorKind::WouldBlock => {}
             Err(_) => {
-                return Err(AppError::PipeError("module".to_string()));
+                return Err(AppError::PipeError("model".to_string()));
             }
         }
         Ok(())
@@ -133,7 +133,7 @@ impl PipeProcessor {
             }
             Err(e) if e.kind() == io::ErrorKind::WouldBlock => {}
             Err(_) => {
-                return Err(AppError::PipeError("module".to_string()));
+                return Err(AppError::PipeError("model".to_string()));
             }
         }
         Ok(())
@@ -158,7 +158,7 @@ impl PipeProcessor {
             }
             Err(e) if e.kind() == io::ErrorKind::WouldBlock => {}
             Err(_) => {
-                return Err(AppError::PipeError("module".to_string()));
+                return Err(AppError::PipeError("model".to_string()));
             }
         }
         Ok(())

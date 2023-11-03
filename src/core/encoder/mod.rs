@@ -18,6 +18,7 @@ pub trait Encoder {
 pub fn encoder_builder(
     encoder_config: &EncoderConfig,
 ) -> Result<Arc<Mutex<Box<dyn Encoder + Send>>>, AppError> {
+    tracing::info!("use encoder type: {}", &encoder_config.encoder_type);
     return match encoder_config.encoder_type.to_lowercase().as_str() {
         "sentence_transformers" => {
             let encoder = sentence_transformers::SentenceTransformers::init(

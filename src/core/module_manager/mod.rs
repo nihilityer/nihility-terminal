@@ -29,6 +29,7 @@ pub async fn module_manager_builder(
     instruct_receiver: Receiver<InstructEntity>,
     manipulate_receiver: Receiver<ManipulateEntity>,
 ) -> Result<(), AppError> {
+    tracing::info!("Module Manager Type: {}", &module_manager_config.manager_type);
     return match module_manager_config.manager_type.to_lowercase().as_str() {
         "grpc_qrdant" => Ok(grpc_qrdant::GrpcQrdant::start(
             encoder,

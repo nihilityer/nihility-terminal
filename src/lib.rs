@@ -13,6 +13,7 @@ use crate::core::module_manager;
 use crate::core::multicast::Multicast;
 #[cfg(unix)]
 use crate::core::pipe::PipeProcessor;
+use crate::core::windows_named_pipe::WindowsNamedPipeProcessor;
 use crate::entity::instruct::InstructEntity;
 use crate::entity::manipulate::ManipulateEntity;
 use crate::entity::module::Module;
@@ -82,15 +83,25 @@ impl NihilityTerminal {
         let pipe_instruct_se = grpc_instruct_se.clone();
         #[cfg(unix)]
         let pipe_manipulate_se = grpc_manipulate_se.clone();
+
+        #[cfg(windows)]
+        let window_named_pipe_module_se = grpc_module_se.clone();
+        #[cfg(windows)]
+        let window_named_pipe_instruct_se = grpc_instruct_se.clone();
+        #[cfg(windows)]
+        let window_named_pipe_manipulate_se = grpc_manipulate_se.clone();
+
         let test_instruct_se = grpc_instruct_se.clone();
 
-        let multicaster_future = Multicast::start(&summary_config.multicast);
+        let multicast_future = Multicast::start(&summary_config.multicast);
+
         let grpc_server_future = GrpcServer::start(
             &summary_config.grpc,
             grpc_module_se,
             grpc_instruct_se,
             grpc_manipulate_se,
         );
+
         #[cfg(unix)]
         let pipe_processor_future = PipeProcessor::start(
             &summary_config.pipe,
@@ -98,7 +109,18 @@ impl NihilityTerminal {
             pipe_instruct_se,
             pipe_manipulate_se,
         );
-        let encoder = encoder::encoder_builder(&summary_config.encoder)?;
+
+        #[cfg(windows)]
+        let pipe_processor_future = WindowsNamedPipeProcessor::start(
+            &summary_config.windows_named_pipes,
+            window_named_pipe_module_se,
+            window_named_pipe_instruct_se,
+            window_named_pipe_manipulate_se,
+        );
+
+        let encoder = encoder::encoder_builder(
+            &summary_config.encoder
+        )?;
         let module_manager_future = module_manager::module_manager_builder(
             &summary_config.module_manager,
             encoder,
@@ -116,16 +138,17 @@ impl NihilityTerminal {
             .await;
         #[cfg(unix)]
         tokio::try_join!(
-            multicaster_future,
+            multicast_future,
             grpc_server_future,
             pipe_processor_future,
             module_manager_future,
         )?;
         #[cfg(windows)]
         tokio::try_join!(
-            multicaster_future,
+            multicast_future,
             grpc_server_future,
             module_manager_future,
+            pipe_processor_future,
         )?;
         Ok(())
     }

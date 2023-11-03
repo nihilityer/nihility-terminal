@@ -26,6 +26,7 @@ impl WindowsNamedPipeProcessor {
         if !windows_named_pipe_config.enable {
             return Ok(());
         }
+        tracing::info!("WindowsNamedPipeProcessor start");
         let module_pipe_name = format!(
             r"{}\{}",
             &windows_named_pipe_config.pipe_prefix, &windows_named_pipe_config.module_pipe_name
@@ -73,7 +74,7 @@ impl WindowsNamedPipeProcessor {
                 }
                 Ok(n) => {
                     let result: ModuleInfoReq = ModuleInfoReq::decode(&data[..n])?;
-                    tracing::debug!("named pipe module name:{:?}", &result.name);
+                    tracing::debug!("named pipe model name:{:?}", &result.name);
                     let model = Module::create_by_req(result).await?;
                     module_sender.send(model).await?;
                 }
@@ -138,7 +139,7 @@ impl WindowsNamedPipeProcessor {
                     manipulate_sender.send(manipulate).await?;
                 }
                 Err(e) if e.kind() == io::ErrorKind::WouldBlock => continue,
-                Err(e) => {
+                Err(_) => {
                     return Err(AppError::PipeError(
                         "manipulate_named_pipe_processor".to_string(),
                     ));

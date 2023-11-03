@@ -58,7 +58,7 @@ impl GrpcQrdant {
             tracing::info!("get manipulate：{:?}", manipulate);
             if let Ok(mut modules) = module_list.lock() {
                 for (_, module) in modules.iter_mut().enumerate() {
-                    tracing::debug!("module name:{}", module.name)
+                    tracing::debug!("model name:{}", module.name)
                 }
             } else {
                 return Err(AppError::ModuleManagerError(
@@ -115,7 +115,7 @@ impl GrpcQrdant {
     ) -> Result<(), AppError> {
         tracing::debug!("module_receiver start recv");
         while let Some(module) = module_receiver.recv().await {
-            tracing::info!("register module：{:?}", &module.name);
+            tracing::info!("register model：{:?}", &module.name);
             if let Ok(mut modules) = module_list.lock() {
                 modules.push(module);
             } else {

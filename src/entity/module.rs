@@ -27,7 +27,7 @@ impl Module {
                 tracing::debug!("{:?}", result);
                 result
             }
-            None => return Err(AppError::ProstTransferError(String::from("module"))),
+            None => return Err(AppError::ProstTransferError(String::from("model"))),
         };
         return match client_type {
             ClientType::GrpcType => Ok(Self::create_grpc_module(req, client_type).await?),
@@ -35,7 +35,7 @@ impl Module {
                 #[cfg(unix)]
                 return Ok(Self::create_pipe_module(req, client_type)?);
                 #[cfg(windows)]
-                return Err(AppError::ModuleManagerError("not support module type".to_string()));
+                return Err(AppError::ModuleManagerError("not support model type".to_string()));
             },
         };
     }
@@ -43,12 +43,12 @@ impl Module {
     /// 创建pipe通信的子模块
     #[cfg(unix)]
     fn create_pipe_module(req: ModuleInfoReq, client_type: ClientType) -> Result<Module, AppError> {
-        tracing::debug!("start create pipe module");
+        tracing::debug!("start create pipe model");
         let instruct_path = req.addr[0].to_string();
         let manipulate_path = req.addr[1].to_string();
         let instruct_client = Box::new(PipeUnixInstructClient::init(instruct_path)?);
         let manipulate_client = Box::new(PipeUnixManipulateClient::init(manipulate_path)?);
-        tracing::debug!("create pipe module {} success", &req.name);
+        tracing::debug!("create pipe model {} success", &req.name);
         Ok(Module {
             name: req.name,
             client_type,
@@ -62,7 +62,7 @@ impl Module {
         req: ModuleInfoReq,
         client_type: ClientType,
     ) -> Result<Module, AppError> {
-        tracing::debug!("start create grpc module");
+        tracing::debug!("start create grpc model");
         let grpc_addr = format!("http://{}", req.addr[0]);
         let instruct_client: Box<InstructClient<Channel>> =
             Box::new(InstructClient::connect(grpc_addr.to_string()).await?);

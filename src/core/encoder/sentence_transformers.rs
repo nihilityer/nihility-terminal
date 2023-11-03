@@ -49,7 +49,7 @@ impl Encoder for SentenceTransformers {
             .iter()
             .map(|i| *i as i64)
             .collect::<Vec<_>>();
-        let mut ids = CowArray::from(Array1::from_iter(ids.iter().cloned()));
+        let ids = CowArray::from(Array1::from_iter(ids.iter().cloned()));
         let n_ids = ids.shape()[0];
         let input_ids = ids
             .clone()
@@ -63,7 +63,7 @@ impl Encoder for SentenceTransformers {
             .iter()
             .map(|i| *i as i64)
             .collect::<Vec<_>>();
-        let mut type_ids = CowArray::from(Array1::from_iter(type_ids.iter().cloned()));
+        let type_ids = CowArray::from(Array1::from_iter(type_ids.iter().cloned()));
         let n_type_ids = type_ids.shape()[0];
         let token_type_ids = type_ids
             .clone()
@@ -77,7 +77,7 @@ impl Encoder for SentenceTransformers {
             .iter()
             .map(|i| *i as i64)
             .collect::<Vec<_>>();
-        let mut attention_mask = CowArray::from(Array1::from_iter(attention_mask.iter().cloned()));
+        let attention_mask = CowArray::from(Array1::from_iter(attention_mask.iter().cloned()));
         let n_attention_mask = attention_mask.shape()[0];
         let attention_mask = attention_mask
             .clone()

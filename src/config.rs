@@ -130,7 +130,7 @@ impl SummaryConfig {
         let pipe_config = PipeConfig {
             enable: true,
             directory: work_dir,
-            module: "module".to_string(),
+            module: "model".to_string(),
             instruct_receiver: "instruct_receiver".to_string(),
             manipulate_receiver: "manipulate_receiver".to_string(),
         };
@@ -139,7 +139,7 @@ impl SummaryConfig {
         let windows_named_pipes_config = WindowsNamedPipesConfig {
             enable: true,
             pipe_prefix: r"\\.\pipe\nihilityer".to_string(),
-            module_pipe_name: "module".to_string(),
+            module_pipe_name: "model".to_string(),
             instruct_pipe_name: "master_instruct".to_string(),
             manipulate_pipe_name: "manipulate".to_string(),
         };
