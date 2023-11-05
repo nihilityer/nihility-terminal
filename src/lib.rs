@@ -1,6 +1,5 @@
 extern crate nihility_common;
 
-use nihility_common::instruct::InstructType;
 use time::macros::format_description;
 use time::UtcOffset;
 use tokio::sync::mpsc;
@@ -91,8 +90,6 @@ impl NihilityTerminal {
         #[cfg(windows)]
         let window_named_pipe_manipulate_se = grpc_manipulate_se.clone();
 
-        let test_instruct_se = grpc_instruct_se.clone();
-
         let multicast_future = Multicast::start(&summary_config.multicast);
 
         let grpc_server_future = GrpcServer::start(
@@ -118,9 +115,7 @@ impl NihilityTerminal {
             window_named_pipe_manipulate_se,
         );
 
-        let encoder = encoder::encoder_builder(
-            &summary_config.encoder
-        )?;
+        let encoder = encoder::encoder_builder(&summary_config.encoder)?;
         let module_manager_future = module_manager::module_manager_builder(
             &summary_config.module_manager,
             encoder,
@@ -130,12 +125,7 @@ impl NihilityTerminal {
         );
 
         tracing::info!("start run");
-        test_instruct_se
-            .send(InstructEntity {
-                instruct_type: InstructType::DefaultType,
-                message: vec!["说，你是猪".to_string()],
-            })
-            .await;
+
         #[cfg(unix)]
         tokio::try_join!(
             multicast_future,
@@ -143,6 +133,7 @@ impl NihilityTerminal {
             pipe_processor_future,
             module_manager_future,
         )?;
+
         #[cfg(windows)]
         tokio::try_join!(
             multicast_future,

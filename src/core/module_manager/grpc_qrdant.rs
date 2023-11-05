@@ -1,19 +1,25 @@
-use async_trait::async_trait;
+use std::string::ToString;
 use std::sync::{Arc, Mutex};
 
+use async_trait::async_trait;
+use qdrant_client::prelude::{Distance, QdrantClient, QdrantClientConfig};
+use qdrant_client::qdrant::{CreateCollection, VectorParams, VectorsConfig};
+use qdrant_client::qdrant::vectors_config::Config;
 use tokio::sync::mpsc::Receiver;
 
+use crate::AppError;
 use crate::core::encoder::Encoder;
 use crate::core::module_manager::ModuleManager;
 use crate::entity::instruct::InstructEntity;
 use crate::entity::manipulate::ManipulateEntity;
 use crate::entity::module::Module;
-use crate::AppError;
 
-pub struct GrpcQrdant;
+const COLLECTION_NAME: &str = "instruct";
+
+pub struct GrpcQdrant;
 
 #[async_trait]
-impl ModuleManager for GrpcQrdant {
+impl ModuleManager for GrpcQdrant {
     async fn start(
         encoder: Arc<Mutex<Box<dyn Encoder + Send>>>,
         module_receiver: Receiver<Module>,
@@ -21,19 +27,52 @@ impl ModuleManager for GrpcQrdant {
         manipulate_receiver: Receiver<ManipulateEntity>,
     ) -> Result<(), AppError> {
         tracing::debug!("ModuleManager start!");
-        let module_list = Arc::new(Mutex::new(Vec::<Module>::new()));
-        let instruct_module_list = module_list.clone();
-        let manipulate_module_list = module_list.clone();
+        let mut encode_size = 0;
+        if let Ok(locked_encoder) = encoder.lock() {
+            encode_size = locked_encoder.encode_size();
+        }
+
+        let qdrant_client = QdrantClientConfig::from_url("http://192.168.0.100:6334").build()?;
+
+        let collections = qdrant_client.list_collections().await?;
+
+        let mut collection_created = false;
+        for collection in collections.collections {
+            if collection.name.eq(COLLECTION_NAME) {
+                // 暂时不判断向量配置等是否相等，等影响体验再进行优化
+                collection_created = true;
+                break;
+            }
+        }
+        if !collection_created {
+            qdrant_client
+                .create_collection(&CreateCollection {
+                    collection_name: COLLECTION_NAME.to_string(),
+                    vectors_config: Some(VectorsConfig {
+                        config: Some(Config::Params(VectorParams {
+                            size: encode_size,
+                            distance: Distance::Cosine.into(),
+                            ..Default::default()
+                        })),
+                    }),
+                    ..Default::default()
+                })
+                .await?;
+        }
+
+        let module_qdrant_client = Arc::new(Mutex::new(qdrant_client));
+        let instruct_qdrant_client = module_qdrant_client.clone();
+        let manipulate_qdrant_client = module_qdrant_client.clone();
 
         let instruct_encoder = encoder.clone();
 
-        let module_feature = Self::manager_module(module_list, module_receiver, encoder);
+        let module_feature = Self::manager_module(module_qdrant_client, module_receiver, encoder);
 
         let instruct_feature =
-            Self::manager_instruct(instruct_module_list, instruct_receiver, instruct_encoder);
+            Self::manager_instruct(instruct_qdrant_client, instruct_receiver, instruct_encoder);
 
         let manipulate_feature =
-            Self::manager_manipulate(manipulate_module_list, manipulate_receiver);
+            Self::manager_manipulate(manipulate_qdrant_client, manipulate_receiver);
 
         tokio::try_join!(module_feature, instruct_feature, manipulate_feature)?;
 
@@ -41,7 +80,7 @@ impl ModuleManager for GrpcQrdant {
     }
 }
 
-impl GrpcQrdant {
+impl GrpcQdrant {
     /// 处理操作的接收和转发
     ///
     /// 1、通过操作实体转发操作
@@ -50,19 +89,17 @@ impl GrpcQrdant {
     ///
     /// 3、处理特定的错误
     async fn manager_manipulate(
-        module_list: Arc<Mutex<Vec<Module>>>,
+        qdrant_client: Arc<Mutex<QdrantClient>>,
         mut manipulate_receiver: Receiver<ManipulateEntity>,
     ) -> Result<(), AppError> {
         tracing::debug!("manipulate_receiver start recv");
         while let Some(manipulate) = manipulate_receiver.recv().await {
             tracing::info!("get manipulate：{:?}", manipulate);
-            if let Ok(mut modules) = module_list.lock() {
-                for (_, module) in modules.iter_mut().enumerate() {
-                    tracing::debug!("model name:{}", module.name)
-                }
+            if let Ok(_) = qdrant_client.lock() {
+                tracing::debug!("get qdrant_client success");
             } else {
                 return Err(AppError::ModuleManagerError(
-                    "Failed to obtain modules lock".to_string(),
+                    "Failed to obtain qdrant_client lock".to_string(),
                 ));
             }
         }
@@ -77,7 +114,7 @@ impl GrpcQrdant {
     ///
     /// 3、转发指令出现错误时选择性重试
     async fn manager_instruct(
-        module_list: Arc<Mutex<Vec<Module>>>,
+        qdrant_client: Arc<Mutex<QdrantClient>>,
         mut instruct_receiver: Receiver<InstructEntity>,
         instruct_encoder: Arc<Mutex<Box<dyn Encoder + Send>>>,
     ) -> Result<(), AppError> {
@@ -109,15 +146,15 @@ impl GrpcQrdant {
     ///
     /// 3、特定错误进行重试或只通知
     async fn manager_module(
-        module_list: Arc<Mutex<Vec<Module>>>,
+        qdrant_client: Arc<Mutex<QdrantClient>>,
         mut module_receiver: Receiver<Module>,
         instruct_encoder: Arc<Mutex<Box<dyn Encoder + Send>>>,
     ) -> Result<(), AppError> {
         tracing::debug!("module_receiver start recv");
         while let Some(module) = module_receiver.recv().await {
             tracing::info!("register model：{:?}", &module.name);
-            if let Ok(mut modules) = module_list.lock() {
-                modules.push(module);
+            if let Ok(_) = qdrant_client.lock() {
+                tracing::debug!("get qdrant_client success");
             } else {
                 return Err(AppError::ModuleManagerError(
                     "Failed to obtain modules lock".to_string(),

@@ -8,6 +8,8 @@ use tokenizers::Tokenizer;
 use crate::core::encoder::Encoder;
 use crate::AppError;
 
+const ENCODE_SIZE: u64 = 512;
+
 pub struct SentenceTransformers {
     pub ort_session: Session,
     pub tokenizer: Tokenizer,
@@ -104,5 +106,9 @@ impl Encoder for SentenceTransformers {
         } else {
             return Err(AppError::ModuleManagerError("encode error".to_string()));
         }
+    }
+
+    fn encode_size(&self) -> u64 {
+        return ENCODE_SIZE.clone();
     }
 }

@@ -13,6 +13,8 @@ pub trait Encoder {
 
     /// 对指令字符串进行编码
     fn encode(&mut self, input: String) -> Result<Vec<f32>, AppError>;
+
+    fn encode_size(&self) -> u64;
 }
 
 pub fn encoder_builder(

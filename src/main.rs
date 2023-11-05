@@ -16,6 +16,7 @@ pub async fn main() -> Result<(), AppError> {
      \/__/                     \/__/                     \/__/                                             \/__/         \|__|    "#
     );
     if let Err(e) = NihilityTerminal::start().await {
+        println!("{}", &e);
         println!("{:?}", e)
     }
     Ok(())
