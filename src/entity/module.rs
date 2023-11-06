@@ -4,11 +4,13 @@ use nihility_common::module_info::{ClientType, ModuleInfoReq};
 use tonic::transport::Channel;
 
 use crate::AppError;
-use crate::communicat::operate::SendInstructOperate;
-use crate::communicat::operate::SendManipulateOperate;
+use crate::communicat::{SendInstructOperate, SendManipulateOperate};
 #[cfg(unix)]
 use crate::communicat::pipe::{PipeUnixInstructClient, PipeUnixManipulateClient};
-use crate::communicat::windows_named_pipe::{WindowsNamedPipeInstructClient, WindowsNamedPipeManipulateClient};
+#[cfg(windows)]
+use crate::communicat::windows_named_pipe::{
+    WindowsNamedPipeInstructClient, WindowsNamedPipeManipulateClient,
+};
 use crate::entity::instruct::InstructEntity;
 use crate::entity::manipulate::ManipulateEntity;
 
@@ -37,11 +39,15 @@ impl Module {
                 #[cfg(unix)]
                 return Ok(Self::create_pipe_module(req, client_type)?);
                 #[cfg(windows)]
-                return Err(AppError::ModuleManagerError("not support model type".to_string()));
-            },
+                return Err(AppError::ModuleManagerError(
+                    "not support model type".to_string(),
+                ));
+            }
             ClientType::WindowsNamedPipeType => {
                 #[cfg(unix)]
-                return Err(AppError::ModuleManagerError("not support model type".to_string()));
+                return Err(AppError::ModuleManagerError(
+                    "not support model type".to_string(),
+                ));
                 #[cfg(windows)]
                 return Ok(Self::create_windows_named_pipe_module(req, client_type)?);
             }
@@ -68,7 +74,10 @@ impl Module {
 
     /// 创建WindowsNamedPipe通信的子模块
     #[cfg(windows)]
-    fn create_windows_named_pipe_module(req: ModuleInfoReq, client_type: ClientType) -> Result<Module, AppError> {
+    fn create_windows_named_pipe_module(
+        req: ModuleInfoReq,
+        client_type: ClientType,
+    ) -> Result<Module, AppError> {
         tracing::debug!("start create pipe model");
         let instruct_path = req.addr[0].to_string();
         let manipulate_path = req.addr[1].to_string();

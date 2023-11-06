@@ -1,9 +1,31 @@
 use std::io;
-use crate::AppError;
-use prost::Message;
+
+use async_trait::async_trait;
 use nihility_common::instruct::{InstructReq, InstructResp};
 use nihility_common::manipulate::{ManipulateReq, ManipulateResp};
+use prost::Message;
 use tokio::net::windows::named_pipe::{ClientOptions, NamedPipeClient};
+
+use crate::communicat::{SendInstructOperate, SendManipulateOperate};
+use crate::AppError;
+
+#[cfg(windows)]
+#[async_trait]
+impl SendInstructOperate for WindowsNamedPipeInstructClient {
+    async fn send(&mut self, instruct: InstructReq) -> Result<bool, AppError> {
+        let result = self.send_instruct(instruct).await?;
+        Ok(result.status)
+    }
+}
+
+#[cfg(windows)]
+#[async_trait]
+impl SendManipulateOperate for WindowsNamedPipeManipulateClient {
+    async fn send(&mut self, manipulate: ManipulateReq) -> Result<bool, AppError> {
+        let result = self.send_manipulate(manipulate).await?;
+        Ok(result.status)
+    }
+}
 
 #[cfg(windows)]
 pub struct WindowsNamedPipeInstructClient {
@@ -17,9 +39,7 @@ pub struct WindowsNamedPipeManipulateClient {
 
 #[cfg(windows)]
 impl WindowsNamedPipeInstructClient {
-    pub fn init(
-        path: String
-    ) -> Result<Self, AppError> {
+    pub fn init(path: String) -> Result<Self, AppError> {
         tracing::debug!("open instruct pipe sender from {}", &path);
         let sender = ClientOptions::new().open(path)?;
         Ok(WindowsNamedPipeInstructClient {
@@ -27,10 +47,7 @@ impl WindowsNamedPipeInstructClient {
         })
     }
 
-    pub async fn send_instruct(
-        &self,
-        instruct_req: InstructReq
-    ) -> Result<InstructResp, AppError> {
+    pub async fn send_instruct(&self, instruct_req: InstructReq) -> Result<InstructResp, AppError> {
         loop {
             self.instruct_sender.writable().await?;
             let mut data = vec![0; 1024];
@@ -55,9 +72,7 @@ impl WindowsNamedPipeInstructClient {
 
 #[cfg(windows)]
 impl WindowsNamedPipeManipulateClient {
-    pub fn init(
-        path: String
-    ) -> Result<Self, AppError> {
+    pub fn init(path: String) -> Result<Self, AppError> {
         tracing::debug!("open manipulate pipe sender from {}", &path);
         let sender = ClientOptions::new().open(path)?;
         Ok(WindowsNamedPipeManipulateClient {

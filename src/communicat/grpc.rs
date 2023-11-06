@@ -1,16 +1,43 @@
-use tokio::sync::mpsc::Sender;
-
-use nihility_common::instruct::instruct_server::Instruct;
+use async_trait::async_trait;
 use nihility_common::instruct::{InstructReq, InstructResp};
-use nihility_common::manipulate::manipulate_server::Manipulate;
+use nihility_common::instruct::instruct_client::InstructClient;
+use nihility_common::instruct::instruct_server::Instruct;
 use nihility_common::manipulate::{ManipulateReq, ManipulateResp};
-use nihility_common::module_info::module_info_server::ModuleInfo;
+use nihility_common::manipulate::manipulate_client::ManipulateClient;
+use nihility_common::manipulate::manipulate_server::Manipulate;
 use nihility_common::module_info::{ModuleInfoReq, ModuleInfoResp};
+use nihility_common::module_info::module_info_server::ModuleInfo;
+use tokio::sync::mpsc::Sender;
 use tonic::{Request, Response, Status};
+use tonic::transport::Channel;
 
+use crate::AppError;
+use crate::communicat::{SendInstructOperate, SendManipulateOperate};
 use crate::entity::instruct::InstructEntity;
 use crate::entity::manipulate::ManipulateEntity;
 use crate::entity::module::Module;
+
+#[async_trait]
+impl SendInstructOperate for InstructClient<Channel> {
+    async fn send(&mut self, instruct: InstructReq) -> Result<bool, AppError> {
+        let result = self
+            .send_instruct(Request::new(instruct))
+            .await?
+            .into_inner();
+        Ok(result.status)
+    }
+}
+
+#[async_trait]
+impl SendManipulateOperate for ManipulateClient<Channel> {
+    async fn send(&mut self, manipulate: ManipulateReq) -> Result<bool, AppError> {
+        let result = self
+            .send_manipulate(Request::new(manipulate))
+            .await?
+            .into_inner();
+        Ok(result.status)
+    }
+}
 
 pub struct ModuleInfoImpl {
     module_sender: Sender<Module>,

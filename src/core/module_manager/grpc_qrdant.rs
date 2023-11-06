@@ -33,7 +33,7 @@ impl ModuleManager for GrpcQdrant {
         instruct_receiver: Receiver<InstructEntity>,
         manipulate_receiver: Receiver<ManipulateEntity>,
     ) -> Result<(), AppError> {
-        tracing::debug!("ModuleManager start!");
+        tracing::info!("GrpcQdrant start");
 
         let module_list = Arc::new(Mutex::new(Vec::<Module>::new()));
 

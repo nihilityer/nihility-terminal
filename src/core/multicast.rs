@@ -12,7 +12,7 @@ pub struct Multicast;
 impl Multicast {
     pub async fn start(multicast_config: &MulticastConfig) -> Result<(), AppError> {
         if multicast_config.enable {
-            tracing::debug!("Broadcaster start!");
+            tracing::info!("Multicast start");
             let mut bind_addr = multicast_config.bind_addr.to_string();
             bind_addr.push_str(format!(":{}", multicast_config.bind_port).as_str());
             tracing::debug!("bind udp_socket on: {}", &bind_addr);

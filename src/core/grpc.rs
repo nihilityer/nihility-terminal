@@ -1,16 +1,15 @@
-use tokio::sync::mpsc::Sender;
-
 use nihility_common::instruct::instruct_server::InstructServer;
 use nihility_common::manipulate::manipulate_server::ManipulateServer;
 use nihility_common::module_info::module_info_server::ModuleInfoServer;
+use tokio::sync::mpsc::Sender;
 use tonic::transport::Server;
 
+use crate::AppError;
 use crate::communicat::grpc::{InstructImpl, ManipulateImpl, ModuleInfoImpl};
 use crate::config::GrpcConfig;
 use crate::entity::instruct::InstructEntity;
 use crate::entity::manipulate::ManipulateEntity;
 use crate::entity::module::Module;
-use crate::AppError;
 
 pub struct GrpcServer;
 
@@ -22,7 +21,7 @@ impl GrpcServer {
         manipulate_sender: Sender<ManipulateEntity>,
     ) -> Result<(), AppError> {
         if grpc_config.enable {
-            tracing::debug!("GrpcServer start!");
+            tracing::info!("GrpcServer start!");
             let mut grpc_addr = grpc_config.addr.to_string();
             grpc_addr.push_str(format!(":{}", grpc_config.port).as_str());
 
