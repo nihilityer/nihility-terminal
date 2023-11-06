@@ -8,12 +8,14 @@ use crate::communicat::operate::SendInstructOperate;
 use crate::communicat::operate::SendManipulateOperate;
 #[cfg(unix)]
 use crate::communicat::pipe::{PipeUnixInstructClient, PipeUnixManipulateClient};
+use crate::communicat::windows_named_pipe::{WindowsNamedPipeInstructClient, WindowsNamedPipeManipulateClient};
 use crate::entity::instruct::InstructEntity;
 use crate::entity::manipulate::ManipulateEntity;
 
 /// 用于维护与子模块的连接以及处理对子模块的操作
 pub struct Module {
     pub name: String,
+    pub default_instruct: Vec<String>,
     client_type: ClientType,
     instruct_client: Box<dyn SendInstructOperate + Send>,
     manipulate_client: Box<dyn SendManipulateOperate + Send>,
@@ -37,6 +39,12 @@ impl Module {
                 #[cfg(windows)]
                 return Err(AppError::ModuleManagerError("not support model type".to_string()));
             },
+            ClientType::WindowsNamedPipeType => {
+                #[cfg(unix)]
+                return Err(AppError::ModuleManagerError("not support model type".to_string()));
+                #[cfg(windows)]
+                return Ok(Self::create_windows_named_pipe_module(req, client_type)?);
+            }
         };
     }
 
@@ -51,6 +59,25 @@ impl Module {
         tracing::debug!("create pipe model {} success", &req.name);
         Ok(Module {
             name: req.name,
+            default_instruct: req.default_instruct.into(),
+            client_type,
+            instruct_client,
+            manipulate_client,
+        })
+    }
+
+    /// 创建WindowsNamedPipe通信的子模块
+    #[cfg(windows)]
+    fn create_windows_named_pipe_module(req: ModuleInfoReq, client_type: ClientType) -> Result<Module, AppError> {
+        tracing::debug!("start create pipe model");
+        let instruct_path = req.addr[0].to_string();
+        let manipulate_path = req.addr[1].to_string();
+        let instruct_client = Box::new(WindowsNamedPipeInstructClient::init(instruct_path)?);
+        let manipulate_client = Box::new(WindowsNamedPipeManipulateClient::init(manipulate_path)?);
+        tracing::debug!("create pipe model {} success", &req.name);
+        Ok(Module {
+            name: req.name,
+            default_instruct: req.default_instruct.into(),
             client_type,
             instruct_client,
             manipulate_client,
@@ -70,6 +97,7 @@ impl Module {
             Box::new(ManipulateClient::connect(grpc_addr.to_string()).await?);
         Ok(Module {
             name: req.name,
+            default_instruct: req.default_instruct.into(),
             client_type,
             instruct_client,
             manipulate_client,

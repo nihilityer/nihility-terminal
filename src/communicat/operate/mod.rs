@@ -7,6 +7,8 @@ use crate::AppError;
 pub mod grpc;
 #[cfg(unix)]
 pub mod pipe;
+#[cfg(windows)]
+pub mod windows_named_pipe;
 
 /// 发送指令特征
 #[async_trait]

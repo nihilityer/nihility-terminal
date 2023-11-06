@@ -24,7 +24,7 @@ mod core;
 mod entity;
 mod error;
 
-pub struct NihilityTerminal {}
+pub struct NihilityTerminal;
 
 impl NihilityTerminal {
     pub async fn start() -> Result<(), AppError> {
@@ -69,50 +69,36 @@ impl NihilityTerminal {
             tracing::debug!("log subscriber init success");
         }
 
-        let (grpc_module_se, module_re) =
+        let (module_se, module_re) =
             mpsc::channel::<Module>(summary_config.module_manager.channel_buffer);
-        let (grpc_instruct_se, instruct_re) =
+        let (instruct_se, instruct_re) =
             mpsc::channel::<InstructEntity>(summary_config.module_manager.channel_buffer);
-        let (grpc_manipulate_se, manipulate_re) =
+        let (manipulate_se, manipulate_re) =
             mpsc::channel::<ManipulateEntity>(summary_config.module_manager.channel_buffer);
-
-        #[cfg(unix)]
-        let pipe_module_se = grpc_module_se.clone();
-        #[cfg(unix)]
-        let pipe_instruct_se = grpc_instruct_se.clone();
-        #[cfg(unix)]
-        let pipe_manipulate_se = grpc_manipulate_se.clone();
-
-        #[cfg(windows)]
-        let window_named_pipe_module_se = grpc_module_se.clone();
-        #[cfg(windows)]
-        let window_named_pipe_instruct_se = grpc_instruct_se.clone();
-        #[cfg(windows)]
-        let window_named_pipe_manipulate_se = grpc_manipulate_se.clone();
 
         let multicast_future = Multicast::start(&summary_config.multicast);
 
         let grpc_server_future = GrpcServer::start(
             &summary_config.grpc,
-            grpc_module_se,
-            grpc_instruct_se,
-            grpc_manipulate_se,
+            module_se.clone(),
+            instruct_se.clone(),
+            manipulate_se.clone(),
         );
 
         #[cfg(unix)]
         let pipe_processor_future = PipeProcessor::start(
             &summary_config.pipe,
-            pipe_module_se,
-            pipe_instruct_se,
-            pipe_manipulate_se,
+            module_se.clone(),
+            instruct_se.clone(),
+            manipulate_se.clone(),
         );
 
         #[cfg(windows)]
         let pipe_processor_future = WindowsNamedPipeProcessor::start(
             &summary_config.windows_named_pipes,
-            window_named_pipe_module_se,
-            window_named_pipe_instruct_se,
-            window_named_pipe_manipulate_se,
+            module_se.clone(),
+            instruct_se.clone(),
+            manipulate_se.clone(),
         );
 
         let encoder = encoder::encoder_builder(&summary_config.encoder)?;

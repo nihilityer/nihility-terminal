@@ -4,7 +4,7 @@ use nihility_common::instruct::{InstructReq, InstructType};
 #[derive(Debug)]
 pub struct InstructEntity {
     pub instruct_type: InstructType,
-    pub message: Vec<String>,
+    pub instruct: String,
 }
 
 impl InstructEntity {
@@ -16,7 +16,7 @@ impl InstructEntity {
         };
         InstructEntity {
             instruct_type,
-            message: req.message,
+            instruct: req.instruct,
         }
     }
 
@@ -24,7 +24,7 @@ impl InstructEntity {
     pub fn create_req(self) -> InstructReq {
         InstructReq {
             instruct_type: self.instruct_type.into(),
-            message: self.message,
+            instruct: self.instruct,
         }
     }
 }

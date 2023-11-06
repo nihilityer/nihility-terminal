@@ -5,8 +5,9 @@ use crate::entity::manipulate::ManipulateEntity;
 use crate::entity::module::Module;
 use crate::AppError;
 use async_trait::async_trait;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc};
 use tokio::sync::mpsc::Receiver;
+use std::sync::Mutex;
 
 mod grpc_qrdant;
 
