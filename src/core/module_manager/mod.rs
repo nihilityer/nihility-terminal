@@ -32,7 +32,7 @@ pub async fn module_manager_builder(
 ) -> Result<(), AppError> {
     tracing::info!("Module Manager Type: {}", &module_manager_config.manager_type);
     return match module_manager_config.manager_type.to_lowercase().as_str() {
-        "grpc_qrdant" => Ok(grpc_qrdant::GrpcQdrant::start(
+        "grpc_qdrant" => Ok(grpc_qrdant::GrpcQdrant::start(
             encoder,
             module_receiver,
             instruct_receiver,

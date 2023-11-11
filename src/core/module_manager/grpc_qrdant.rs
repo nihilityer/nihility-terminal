@@ -140,7 +140,7 @@ impl GrpcQdrant {
             if let Ok(mut encoder) = instruct_encoder.lock() {
                 let v1 = encoder.encode(instruct.instruct.to_string())?;
                 let v2 = encoder.encode("说，你是狗".to_string())?;
-                let v3 = encoder.encode("说你是猪".to_string())?;
+                let v3 = encoder.encode("那就试试吧".to_string())?;
                 tracing::info!("cosine_similarity:{}", cosine_similarity(&v1, &v2));
                 tracing::info!("cosine_similarity:{}", cosine_similarity(&v1, &v3));
             } else {

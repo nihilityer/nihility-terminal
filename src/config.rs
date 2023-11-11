@@ -157,7 +157,7 @@ impl SummaryConfig {
         };
 
         let module_manager_config = ModuleManagerConfig {
-            manager_type: "grpc_qrdant".to_string(),
+            manager_type: "grpc_qdrant".to_string(),
             interval: 1,
             channel_buffer: 10,
         };

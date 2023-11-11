@@ -21,9 +21,8 @@ impl GrpcServer {
         manipulate_sender: Sender<ManipulateEntity>,
     ) -> Result<(), AppError> {
         if grpc_config.enable {
-            tracing::info!("GrpcServer start!");
-            let mut grpc_addr = grpc_config.addr.to_string();
-            grpc_addr.push_str(format!(":{}", grpc_config.port).as_str());
+            let bind_addr = format!("{}:{}", grpc_config.addr.to_string(), grpc_config.port.to_string());
+            tracing::info!("Grpc Server bind at {}", &bind_addr);
 
             Server::builder()
                 .add_service(ModuleInfoServer::new(ModuleInfoImpl::init(module_sender)))
@@ -31,7 +30,7 @@ impl GrpcServer {
                 .add_service(ManipulateServer::new(ManipulateImpl::init(
                     manipulate_sender,
                 )))
-                .serve(grpc_addr.parse()?)
+                .serve(bind_addr.parse()?)
                 .await?;
         }
 

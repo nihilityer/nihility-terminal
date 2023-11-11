@@ -99,7 +99,7 @@ impl Module {
         client_type: ClientType,
     ) -> Result<Module, AppError> {
         tracing::debug!("start create grpc model");
-        let grpc_addr = format!("http://{}", req.addr[0]);
+        let grpc_addr = req.addr[0].to_string();
         let instruct_client: Box<InstructClient<Channel>> =
             Box::new(InstructClient::connect(grpc_addr.to_string()).await?);
         let manipulate_client: Box<ManipulateClient<Channel>> =
