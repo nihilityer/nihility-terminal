@@ -234,22 +234,22 @@ fn try_lock_resource<'a>(
     ),
     AppError,
 > {
-    return if let Ok(modules) = module_list.lock() {
-        match instruct_encoder.try_lock() {
-            Ok(encoder) => {
-                tracing::debug!("try_lock_resource success");
-                Ok((modules, encoder))
+    loop {
+        if let Ok(modules) = module_list.lock() {
+            match instruct_encoder.try_lock() {
+                Ok(encoder) => {
+                    tracing::debug!("try_lock_resource success");
+                    return Ok((modules, encoder))
+                }
+                Err(_) => {
+                    drop(modules);
+                    continue
+                }
             }
-            Err(_) => {
-                drop(modules);
-                try_lock_resource(module_list, instruct_encoder)
-            }
+        } else {
+            return Err(AppError::ModuleManagerError("try_lock_resource".to_string()))
         }
-    } else {
-        Err(AppError::ModuleManagerError(
-            "Failed to obtain modules lock".to_string(),
-        ))
-    };
+    }
 }
 
 fn cosine_similarity(vec1: &Vec<f32>, vec2: &Vec<f32>) -> f32 {
