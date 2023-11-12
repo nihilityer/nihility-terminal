@@ -1,27 +1,35 @@
 use std::collections::HashMap;
+use std::ops::{Index, IndexMut};
 use std::string::ToString;
-use std::sync::{Mutex, MutexGuard};
 use std::sync::Arc;
+use std::sync::{Mutex, MutexGuard};
 
 use async_trait::async_trait;
 use qdrant_client::prelude::{
     Distance, Payload, PointStruct, QdrantClient, QdrantClientConfig, Value,
 };
-use qdrant_client::qdrant::{CreateCollection, VectorParams, VectorsConfig};
 use qdrant_client::qdrant::value::Kind::{IntegerValue, StringValue};
 use qdrant_client::qdrant::vectors_config::Config;
+use qdrant_client::qdrant::with_payload_selector::SelectorOptions::Enable;
+use qdrant_client::qdrant::{
+    CreateCollection, SearchPoints, VectorParams, VectorsConfig, WithPayloadSelector,
+};
 use tokio::sync::mpsc::Receiver;
 use uuid::Uuid;
 
-use crate::AppError;
 use crate::core::encoder::Encoder;
 use crate::core::module_manager::ModuleManager;
 use crate::entity::instruct::InstructEntity;
 use crate::entity::manipulate::ManipulateEntity;
 use crate::entity::module::Module;
+use crate::AppError;
 
 const COLLECTION_NAME: &str = "instruct";
+const MODULE_NAME: &str = "module_name";
+const MODULE_ID: &str = "module_id";
+const INSTRUCT: &str = "instruct";
 const CHUNK_SIZE: usize = 4;
+const CONFIDENCE_THRESHOLD: f32 = 0.7;
 
 pub struct GrpcQdrant;
 
@@ -35,7 +43,7 @@ impl ModuleManager for GrpcQdrant {
     ) -> Result<(), AppError> {
         tracing::info!("GrpcQdrant start");
 
-        let module_list = Arc::new(Mutex::new(Vec::<Module>::new()));
+        let module_list = Arc::new(tokio::sync::Mutex::new(Vec::<Module>::new()));
 
         let mut encode_size = 0;
         if let Ok(locked_encoder) = encoder.lock() {
@@ -108,7 +116,7 @@ impl GrpcQdrant {
     ///
     /// 3、处理特定的错误
     async fn manager_manipulate(
-        module_list: Arc<Mutex<Vec<Module>>>,
+        module_list: Arc<tokio::sync::Mutex<Vec<Module>>>,
         qdrant_client: Arc<tokio::sync::Mutex<QdrantClient>>,
         mut manipulate_receiver: Receiver<ManipulateEntity>,
     ) -> Result<(), AppError> {
@@ -129,7 +137,7 @@ impl GrpcQdrant {
     ///
     /// 3、转发指令出现错误时选择性重试
     async fn manager_instruct(
-        module_list: Arc<Mutex<Vec<Module>>>,
+        module_list: Arc<tokio::sync::Mutex<Vec<Module>>>,
         qdrant_client: Arc<tokio::sync::Mutex<QdrantClient>>,
         instruct_encoder: Arc<Mutex<Box<dyn Encoder + Send>>>,
         mut instruct_receiver: Receiver<InstructEntity>,
@@ -137,16 +145,63 @@ impl GrpcQdrant {
         tracing::debug!("instruct_receiver start recv");
         while let Some(instruct) = instruct_receiver.recv().await {
             tracing::info!("from mpsc receiver get instruct：{:?}", &instruct);
+            let mut encoded_instruct = Vec::new();
             if let Ok(mut encoder) = instruct_encoder.lock() {
-                let v1 = encoder.encode(instruct.instruct.to_string())?;
-                let v2 = encoder.encode("说，你是狗".to_string())?;
-                let v3 = encoder.encode("那就试试吧".to_string())?;
-                tracing::info!("cosine_similarity:{}", cosine_similarity(&v1, &v2));
-                tracing::info!("cosine_similarity:{}", cosine_similarity(&v1, &v3));
+                encoded_instruct = encoder.encode(instruct.instruct.to_string())?;
             } else {
                 return Err(AppError::ModuleManagerError(
                     "Failed to obtain sbert lock".to_string(),
                 ));
+            }
+            let mut search_result = Vec::new();
+            {
+                let lock_qdrant_client = qdrant_client.lock().await;
+                let search_req = SearchPoints {
+                    collection_name: COLLECTION_NAME.to_string(),
+                    vector: encoded_instruct,
+                    limit: 1,
+                    with_payload: Some(WithPayloadSelector {
+                        selector_options: Some(Enable(true)),
+                    }),
+                    ..Default::default()
+                };
+                tracing::debug!("search instruct request: {:?}", &search_req);
+                let search_resp = lock_qdrant_client.search_points(&search_req).await?;
+                tracing::debug!("search instruct response: {:?}", &search_resp);
+                search_result = search_resp.result;
+            }
+            if !search_result.is_empty() {
+                let best_point = search_result.index(0);
+                tracing::debug!("best point score is {}", best_point.score);
+                if best_point.score >= CONFIDENCE_THRESHOLD {
+                    let payload = best_point.clone().payload;
+                    tracing::debug!("best point payload: {:?}", &payload);
+                    if let (Some(id_kind), Some(name_kind), Some(instruct_kind)) = (
+                        payload.get(MODULE_ID),
+                        payload.get(MODULE_NAME),
+                        payload.get(INSTRUCT),
+                    ) {
+                        if let (
+                            Some(IntegerValue(module_id)),
+                            Some(StringValue(module_name)),
+                            Some(StringValue(default_instruct)),
+                        ) = (
+                            id_kind.clone().kind,
+                            name_kind.clone().kind,
+                            instruct_kind.clone().kind,
+                        ) {
+                            tracing::debug!("module_id is {:?}", &module_id);
+                            tracing::info!("search result module_name is {:?}", &module_name);
+                            tracing::debug!("default_instruct is {:?}", &default_instruct);
+                            let mut modules = module_list.lock().await;
+                            let mut module: &mut Module = modules.index_mut(module_id as usize);
+                            tracing::debug!("get module by id result is {:?}", &module.name);
+                            let send_resp = module.send_instruct(instruct).await?;
+                            tracing::debug!("send_instruct result: {:?}", send_resp);
+                            continue;
+                        }
+                    }
+                }
             }
         }
         Ok(())
@@ -160,7 +215,7 @@ impl GrpcQdrant {
     ///
     /// 3、特定错误进行重试或只通知
     async fn manager_module(
-        module_list: Arc<Mutex<Vec<Module>>>,
+        module_list: Arc<tokio::sync::Mutex<Vec<Module>>>,
         qdrant_client: Arc<tokio::sync::Mutex<QdrantClient>>,
         instruct_encoder: Arc<Mutex<Box<dyn Encoder + Send>>>,
         mut module_receiver: Receiver<Module>,
@@ -169,43 +224,54 @@ impl GrpcQdrant {
         while let Some(module) = module_receiver.recv().await {
             tracing::info!("start register model：{:?}", &module.name);
             let mut points = Vec::<PointStruct>::new();
-            {
-                let (mut locked_module_list, mut locked_instruct_encoder) =
-                    try_lock_resource(&module_list, &instruct_encoder)?;
-                // 获取当前模块在数组中的索引值，方便取值
-                let module_id = locked_module_list.len() as i64;
-                // 创建公共部分负载
-                let mut payload = HashMap::<String, Value>::new();
-                payload.insert(
-                    "module_id".to_string(),
-                    Value {
-                        kind: Some(IntegerValue(module_id)),
-                    },
-                );
-                payload.insert(
-                    "module_name".to_string(),
-                    Value {
-                        kind: Some(StringValue(module.name.to_string())),
-                    },
-                );
-                // 先将所有指令编码，之后统一插入，减少网络通信的损耗
-                for instruct in &module.default_instruct {
-                    let mut instruct_payload = payload.clone();
-                    instruct_payload.insert(
-                        "instruct".to_string(),
-                        Value {
-                            kind: Some(StringValue(instruct.to_string())),
-                        },
-                    );
-                    let encode_result = locked_instruct_encoder.encode(instruct.to_string())?;
-                    let id = Uuid::new_v4();
-                    points.push(PointStruct::new(
-                        id.to_string(),
-                        encode_result,
-                        Payload::new_from_hashmap(instruct_payload),
-                    ));
+            // 此处操作需要同时获取两个锁，所以只有都获取时才进行操作，否则释放锁等待下次获取锁
+            loop {
+                let mut locked_module_list = module_list.lock().await;
+                match instruct_encoder.try_lock() {
+                    Ok(mut locked_instruct_encoder) => {
+                        tracing::debug!("try_lock_resource success");
+                        // 获取当前模块在数组中的索引值，方便取值
+                        let module_id = locked_module_list.len() as i64;
+                        // 创建公共部分负载
+                        let mut payload = HashMap::<String, Value>::new();
+                        payload.insert(
+                            MODULE_ID.to_string(),
+                            Value {
+                                kind: Some(IntegerValue(module_id)),
+                            },
+                        );
+                        payload.insert(
+                            MODULE_NAME.to_string(),
+                            Value {
+                                kind: Some(StringValue(module.name.to_string())),
+                            },
+                        );
+                        // 先将所有指令编码，之后统一插入，减少网络通信的损耗
+                        for instruct in &module.default_instruct {
+                            let mut instruct_payload = payload.clone();
+                            instruct_payload.insert(
+                                INSTRUCT.to_string(),
+                                Value {
+                                    kind: Some(StringValue(instruct.to_string())),
+                                },
+                            );
+                            let encode_result =
+                                locked_instruct_encoder.encode(instruct.to_string())?;
+                            let id = Uuid::new_v4();
+                            points.push(PointStruct::new(
+                                id.to_string(),
+                                encode_result,
+                                Payload::new_from_hashmap(instruct_payload),
+                            ));
+                        }
+                        locked_module_list.push(module);
+                        break;
+                    }
+                    Err(_) => {
+                        drop(locked_module_list);
+                        continue;
+                    }
                 }
-                locked_module_list.push(module);
             }
             let locked_qdrant_client = qdrant_client.lock().await;
             // 目前以最新注册的模块指令为准，之后更新体验决定是否保留或继续覆盖
@@ -214,41 +280,6 @@ impl GrpcQdrant {
                 .await?;
         }
         Ok(())
-    }
-}
-
-/// 尝试同时获取moduleList和qdrantClient的锁
-///
-/// 先阻塞获取moduleList的锁.
-///
-/// 获取成功后再依次尝试获取instructEncoder、qdrantClient的锁，一般不会获取失败。
-///
-/// 如果获取失败了，将moduleList的锁释放，再尝试获取全部锁
-fn try_lock_resource<'a>(
-    module_list: &'a Arc<Mutex<Vec<Module>>>,
-    instruct_encoder: &'a Arc<Mutex<Box<dyn Encoder + Send>>>,
-) -> Result<
-    (
-        MutexGuard<'a, Vec<Module>>,
-        MutexGuard<'a, Box<dyn Encoder + Send>>,
-    ),
-    AppError,
-> {
-    loop {
-        if let Ok(modules) = module_list.lock() {
-            match instruct_encoder.try_lock() {
-                Ok(encoder) => {
-                    tracing::debug!("try_lock_resource success");
-                    return Ok((modules, encoder))
-                }
-                Err(_) => {
-                    drop(modules);
-                    continue
-                }
-            }
-        } else {
-            return Err(AppError::ModuleManagerError("try_lock_resource".to_string()))
-        }
     }
 }
 
