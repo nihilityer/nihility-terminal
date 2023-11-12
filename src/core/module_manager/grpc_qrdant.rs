@@ -2,27 +2,27 @@ use std::collections::HashMap;
 use std::ops::{Index, IndexMut};
 use std::string::ToString;
 use std::sync::Arc;
-use std::sync::{Mutex, MutexGuard};
+use std::sync::Mutex;
 
 use async_trait::async_trait;
 use qdrant_client::prelude::{
     Distance, Payload, PointStruct, QdrantClient, QdrantClientConfig, Value,
 };
+use qdrant_client::qdrant::{
+    CreateCollection, ScoredPoint, SearchPoints, VectorParams, VectorsConfig, WithPayloadSelector,
+};
 use qdrant_client::qdrant::value::Kind::{IntegerValue, StringValue};
 use qdrant_client::qdrant::vectors_config::Config;
 use qdrant_client::qdrant::with_payload_selector::SelectorOptions::Enable;
-use qdrant_client::qdrant::{
-    CreateCollection, SearchPoints, VectorParams, VectorsConfig, WithPayloadSelector,
-};
 use tokio::sync::mpsc::Receiver;
 use uuid::Uuid;
 
+use crate::AppError;
 use crate::core::encoder::Encoder;
 use crate::core::module_manager::ModuleManager;
 use crate::entity::instruct::InstructEntity;
 use crate::entity::manipulate::ManipulateEntity;
 use crate::entity::module::Module;
-use crate::AppError;
 
 const COLLECTION_NAME: &str = "instruct";
 const MODULE_NAME: &str = "module_name";
@@ -145,15 +145,15 @@ impl GrpcQdrant {
         tracing::debug!("instruct_receiver start recv");
         while let Some(instruct) = instruct_receiver.recv().await {
             tracing::info!("from mpsc receiver get instruct：{:?}", &instruct);
-            let mut encoded_instruct = Vec::new();
+            let mut encoded_instruct: Vec<f32> = Vec::new();
             if let Ok(mut encoder) = instruct_encoder.lock() {
-                encoded_instruct = encoder.encode(instruct.instruct.to_string())?;
+                encoded_instruct.append(encoder.encode(instruct.instruct.to_string())?.as_mut());
             } else {
                 return Err(AppError::ModuleManagerError(
                     "Failed to obtain sbert lock".to_string(),
                 ));
             }
-            let mut search_result = Vec::new();
+            let mut search_result = Vec::<ScoredPoint>::new();
             {
                 let lock_qdrant_client = qdrant_client.lock().await;
                 let search_req = SearchPoints {
@@ -168,7 +168,7 @@ impl GrpcQdrant {
                 tracing::debug!("search instruct request: {:?}", &search_req);
                 let search_resp = lock_qdrant_client.search_points(&search_req).await?;
                 tracing::debug!("search instruct response: {:?}", &search_resp);
-                search_result = search_resp.result;
+                search_result.append(search_resp.result.clone().as_mut());
             }
             if !search_result.is_empty() {
                 let best_point = search_result.index(0);
@@ -194,7 +194,7 @@ impl GrpcQdrant {
                             tracing::info!("search result module_name is {:?}", &module_name);
                             tracing::debug!("default_instruct is {:?}", &default_instruct);
                             let mut modules = module_list.lock().await;
-                            let mut module: &mut Module = modules.index_mut(module_id as usize);
+                            let module: &mut Module = modules.index_mut(module_id as usize);
                             tracing::debug!("get module by id result is {:?}", &module.name);
                             let send_resp = module.send_instruct(instruct).await?;
                             tracing::debug!("send_instruct result: {:?}", send_resp);
@@ -229,7 +229,7 @@ impl GrpcQdrant {
                 let mut locked_module_list = module_list.lock().await;
                 match instruct_encoder.try_lock() {
                     Ok(mut locked_instruct_encoder) => {
-                        tracing::debug!("try_lock_resource success");
+                        tracing::debug!("lock locked_module_list, locked_instruct_encoder success");
                         // 获取当前模块在数组中的索引值，方便取值
                         let module_id = locked_module_list.len() as i64;
                         // 创建公共部分负载
@@ -281,24 +281,4 @@ impl GrpcQdrant {
         }
         Ok(())
     }
-}
-
-fn cosine_similarity(vec1: &Vec<f32>, vec2: &Vec<f32>) -> f32 {
-    if vec1.len() != vec2.len() || vec1.is_empty() {
-        panic!("Input vectors must have the same length and cannot be empty.");
-    }
-
-    let dot_product = vec1
-        .iter()
-        .zip(vec2.iter())
-        .map(|(a, b)| a * b)
-        .sum::<f32>();
-    let magnitude1 = vec1.iter().map(|x| x * x).sum::<f32>().sqrt();
-    let magnitude2 = vec2.iter().map(|x| x * x).sum::<f32>().sqrt();
-
-    if magnitude1 == 0.0 || magnitude2 == 0.0 {
-        return 0.0; // Handle division by zero
-    }
-
-    dot_product / (magnitude1 * magnitude2)
 }
