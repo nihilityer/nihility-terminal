@@ -22,7 +22,7 @@ ort = {version = "1.16", features = ["half", "load-dynamic"], default-features =
 tokenizers = "0.14"
 figment = { version = "0.10", features = ["json", "toml", "yaml"] }
 qdrant-client = { version = "1.6.0" }
-nihility-common = { git = "https://git.nihilityer.top:8443/nihilityer/nihility-common", tag = "v0.0.2" }
+nihility-common = { git = "https://git.nihilityer.top:8443/nihilityer/nihility-common", tag = "v0.0.5" }
 serde_json = "1.0"
 uuid = { version = "1.5", features = ["v4", "fast-rng", "macro-diagnostics"] }
 

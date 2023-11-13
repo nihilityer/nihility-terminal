@@ -3,7 +3,7 @@ use async_trait::async_trait;
 #[cfg(unix)]
 #[async_trait]
 impl SendInstructOperate for PipeUnixInstructClient {
-    async fn send(&mut self, instruct: InstructReq) -> Result<bool, AppError> {
+    async fn send(&mut self, instruct: InstructReq) -> Result<RespCode, AppError> {
         let result = self.send_instruct(instruct).await?;
         Ok(result.status)
     }
@@ -12,7 +12,7 @@ impl SendInstructOperate for PipeUnixInstructClient {
 #[cfg(unix)]
 #[async_trait]
 impl SendManipulateOperate for PipeUnixManipulateClient {
-    async fn send(&mut self, manipulate: ManipulateReq) -> Result<bool, AppError> {
+    async fn send(&mut self, manipulate: ManipulateReq) -> Result<RespCode, AppError> {
         let result = self.send_manipulate(manipulate).await?;
         Ok(result.status)
     }

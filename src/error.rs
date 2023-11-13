@@ -62,6 +62,9 @@ pub enum AppError {
     #[error("Grpc服务启动异常！")]
     GrpcServerStartException(#[from] tonic::transport::Error),
 
+    #[error("Grpc Module {0} get a exception")]
+    GrpcModuleException(String),
+
     #[error("Toml转换异常！")]
     JsonException(#[from] toml::ser::Error),
 

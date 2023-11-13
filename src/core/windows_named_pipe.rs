@@ -1,6 +1,6 @@
 use nihility_common::instruct::InstructReq;
 use nihility_common::manipulate::ManipulateReq;
-use nihility_common::module_info::ModuleInfoReq;
+use nihility_common::sub_module::ModuleInfo;
 use prost::Message;
 use tokio::io;
 use tokio::net::windows::named_pipe::{NamedPipeServer, ServerOptions};
@@ -73,7 +73,7 @@ impl WindowsNamedPipeProcessor {
                     ));
                 }
                 Ok(n) => {
-                    let result: ModuleInfoReq = ModuleInfoReq::decode(&data[..n])?;
+                    let result: ModuleInfo = ModuleInfo::decode(&data[..n])?;
                     tracing::debug!("named pipe model name:{:?}", &result.name);
                     let model = Module::create_by_req(result).await?;
                     module_sender.send(model).await?;

@@ -5,6 +5,7 @@ use nihility_common::manipulate::{ManipulateReq, ManipulateType};
 pub struct ManipulateEntity {
     pub manipulate_type: ManipulateType,
     pub command: String,
+    pub use_module_name: String,
 }
 
 impl ManipulateEntity {
@@ -17,6 +18,7 @@ impl ManipulateEntity {
         ManipulateEntity {
             manipulate_type,
             command: req.command,
+            use_module_name: req.use_module_name,
         }
     }
 
@@ -25,6 +27,7 @@ impl ManipulateEntity {
         ManipulateReq {
             manipulate_type: self.manipulate_type.into(),
             command: self.command,
+            use_module_name: self.use_module_name,
         }
     }
 }
