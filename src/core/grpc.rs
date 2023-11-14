@@ -8,7 +8,7 @@ use crate::communicat::grpc::{InstructImpl, ManipulateImpl, SubModuleImpl};
 use crate::config::GrpcConfig;
 use crate::entity::instruct::InstructEntity;
 use crate::entity::manipulate::ManipulateEntity;
-use crate::entity::module::Module;
+use crate::entity::module::ModuleOperate;
 use crate::AppError;
 
 pub struct GrpcServer;
@@ -16,7 +16,7 @@ pub struct GrpcServer;
 impl GrpcServer {
     pub async fn start(
         grpc_config: &GrpcConfig,
-        module_sender: Sender<Module>,
+        operate_module_sender: Sender<ModuleOperate>,
         instruct_sender: Sender<InstructEntity>,
         manipulate_sender: Sender<ManipulateEntity>,
     ) -> Result<(), AppError> {
@@ -29,7 +29,9 @@ impl GrpcServer {
             tracing::info!("Grpc Server bind at {}", &bind_addr);
 
             Server::builder()
-                .add_service(SubModuleServer::new(SubModuleImpl::init(module_sender)))
+                .add_service(SubModuleServer::new(SubModuleImpl::init(
+                    operate_module_sender,
+                )))
                 .add_service(InstructServer::new(InstructImpl::init(instruct_sender)))
                 .add_service(ManipulateServer::new(ManipulateImpl::init(
                     manipulate_sender,

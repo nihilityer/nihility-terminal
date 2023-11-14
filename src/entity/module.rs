@@ -17,30 +17,61 @@ use crate::entity::instruct::InstructEntity;
 use crate::entity::manipulate::ManipulateEntity;
 use crate::AppError;
 
+/// 操作子模块类型
+pub enum OperateType {
+    /// 注册当前模块
+    REGISTER,
+    /// 注销当前模块
+    OFFLINE,
+    /// 当前模块心跳信息
+    HEARTBEAT,
+    /// 更新当前模块
+    UPDATE,
+}
+
+/// 操作子模块消息结构体
+pub struct ModuleOperate {
+    pub name: String,
+    pub default_instruct: Vec<String>,
+    pub sub_module_type: SubModuleType,
+    pub addr: Vec<String>,
+    pub operate_type: OperateType,
+}
+
 /// 用于维护与子模块的连接以及处理对子模块的操作
 pub struct Module {
     pub name: String,
     pub default_instruct: Vec<String>,
-    sub_module_type: SubModuleType,
+    pub sub_module_type: SubModuleType,
     instruct_client: Box<dyn SendInstructOperate + Send>,
     manipulate_client: Box<dyn SendManipulateOperate + Send>,
 }
 
+impl ModuleOperate {
+    /// 通过应用间消息创建操作子模块消息结构体，由调用的方法决定结构体类型
+    pub fn create_by_req(req: ModuleInfo, operate_type: OperateType) -> Result<Self, AppError> {
+        if let Some(sub_module_type) = SubModuleType::from_i32(req.sub_module_type) {
+            Ok(ModuleOperate {
+                name: req.name,
+                default_instruct: req.default_instruct,
+                sub_module_type,
+                addr: req.addr,
+                operate_type,
+            })
+        } else {
+            Err(AppError::ProstTransferError(String::from("model")))
+        }
+    }
+}
+
 impl Module {
     /// 统一实现由注册消息创建Module
-    pub async fn create_by_req(req: ModuleInfo) -> Result<Self, AppError> {
-        let sub_module_type = match SubModuleType::from_i32(req.sub_module_type) {
-            Some(result) => {
-                tracing::debug!("{:?}", result);
-                result
-            }
-            None => return Err(AppError::ProstTransferError(String::from("model"))),
-        };
-        return match sub_module_type {
-            SubModuleType::GrpcType => Ok(Self::create_grpc_module(req, sub_module_type).await?),
+    pub async fn create_by_operate(operate: ModuleOperate) -> Result<Self, AppError> {
+        return match operate.sub_module_type {
+            SubModuleType::GrpcType => Ok(Self::create_grpc_module(operate).await?),
             SubModuleType::PipeType => {
                 #[cfg(unix)]
-                return Ok(Self::create_pipe_module(req, sub_module_type)?);
+                return Ok(Self::create_pipe_module(operate)?);
                 #[cfg(windows)]
                 return Err(AppError::ModuleManagerError(
                     "not support model type".to_string(),
@@ -52,30 +83,24 @@ impl Module {
                     "not support model type".to_string(),
                 ));
                 #[cfg(windows)]
-                return Ok(Self::create_windows_named_pipe_module(
-                    req,
-                    sub_module_type,
-                )?);
+                return Ok(Self::create_windows_named_pipe_module(operate)?);
             }
         };
     }
 
     /// 创建pipe通信的子模块
     #[cfg(unix)]
-    fn create_pipe_module(
-        req: ModuleInfoReq,
-        sub_module_type: SubModuleType,
-    ) -> Result<Module, AppError> {
+    fn create_pipe_module(operate: ModuleOperate) -> Result<Module, AppError> {
         tracing::debug!("start create pipe model");
-        let instruct_path = req.addr[0].to_string();
-        let manipulate_path = req.addr[1].to_string();
+        let instruct_path = operate.addr[0].to_string();
+        let manipulate_path = operate.addr[1].to_string();
         let instruct_client = Box::new(PipeUnixInstructClient::init(instruct_path)?);
         let manipulate_client = Box::new(PipeUnixManipulateClient::init(manipulate_path)?);
         tracing::debug!("create pipe model {} success", &req.name);
         Ok(Module {
-            name: req.name,
-            default_instruct: req.default_instruct.into(),
-            sub_module_type: sub_module_type,
+            name: operate.name,
+            default_instruct: operate.default_instruct.into(),
+            sub_module_type: operate.sub_module_type,
             instruct_client,
             manipulate_client,
         })
@@ -83,40 +108,34 @@ impl Module {
 
     /// 创建WindowsNamedPipe通信的子模块
     #[cfg(windows)]
-    fn create_windows_named_pipe_module(
-        req: ModuleInfo,
-        sub_module_type: SubModuleType,
-    ) -> Result<Module, AppError> {
+    fn create_windows_named_pipe_module(operate: ModuleOperate) -> Result<Module, AppError> {
         tracing::debug!("start create pipe model");
-        let instruct_path = req.addr[0].to_string();
-        let manipulate_path = req.addr[1].to_string();
+        let instruct_path = operate.addr[0].to_string();
+        let manipulate_path = operate.addr[1].to_string();
         let instruct_client = Box::new(WindowsNamedPipeInstructClient::init(instruct_path)?);
         let manipulate_client = Box::new(WindowsNamedPipeManipulateClient::init(manipulate_path)?);
-        tracing::debug!("create pipe model {} success", &req.name);
+        tracing::debug!("create pipe model {} success", &operate.name);
         Ok(Module {
-            name: req.name,
-            default_instruct: req.default_instruct.into(),
-            sub_module_type,
+            name: operate.name,
+            default_instruct: operate.default_instruct.into(),
+            sub_module_type: operate.sub_module_type,
             instruct_client,
             manipulate_client,
         })
     }
 
     /// 创建grpc通信的子模块
-    async fn create_grpc_module(
-        req: ModuleInfo,
-        sub_module_type: SubModuleType,
-    ) -> Result<Module, AppError> {
+    async fn create_grpc_module(operate: ModuleOperate) -> Result<Module, AppError> {
         tracing::debug!("start create grpc model");
-        let grpc_addr = req.addr[0].to_string();
+        let grpc_addr = operate.addr[0].to_string();
         let instruct_client: Box<InstructClient<Channel>> =
             Box::new(InstructClient::connect(grpc_addr.to_string()).await?);
         let manipulate_client: Box<ManipulateClient<Channel>> =
             Box::new(ManipulateClient::connect(grpc_addr.to_string()).await?);
         Ok(Module {
-            name: req.name,
-            default_instruct: req.default_instruct.into(),
-            sub_module_type,
+            name: operate.name,
+            default_instruct: operate.default_instruct.into(),
+            sub_module_type: operate.sub_module_type,
             instruct_client,
             manipulate_client,
         })

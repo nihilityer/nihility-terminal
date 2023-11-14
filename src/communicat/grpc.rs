@@ -15,7 +15,7 @@ use tonic::{Request, Response, Status};
 use crate::communicat::{SendInstructOperate, SendManipulateOperate};
 use crate::entity::instruct::InstructEntity;
 use crate::entity::manipulate::ManipulateEntity;
-use crate::entity::module::Module;
+use crate::entity::module::{ModuleOperate, OperateType};
 use crate::AppError;
 
 #[async_trait]
@@ -51,7 +51,7 @@ impl SendManipulateOperate for ManipulateClient<Channel> {
 }
 
 pub struct SubModuleImpl {
-    module_sender: Sender<Module>,
+    operate_module_sender: Sender<ModuleOperate>,
 }
 
 pub struct InstructImpl {
@@ -68,9 +68,10 @@ impl SubModule for SubModuleImpl {
         &self,
         request: Request<ModuleInfo>,
     ) -> Result<Response<SubModuleResp>, Status> {
-        let module = Module::create_by_req(request.into_inner()).await.unwrap();
+        let module =
+            ModuleOperate::create_by_req(request.into_inner(), OperateType::REGISTER).unwrap();
         tracing::info!("start register model:{}", &module.name);
-        self.module_sender.send(module).await.unwrap();
+        self.operate_module_sender.send(module).await.unwrap();
         Ok(Response::new(SubModuleResp {
             success: true,
             resp_code: RespCode::Success.into(),
@@ -125,9 +126,9 @@ impl Manipulate for ManipulateImpl {
 }
 
 impl SubModuleImpl {
-    pub fn init(sender: Sender<Module>) -> Self {
+    pub fn init(operate_module_sender: Sender<ModuleOperate>) -> Self {
         SubModuleImpl {
-            module_sender: sender,
+            operate_module_sender,
         }
     }
 }

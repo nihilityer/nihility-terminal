@@ -13,7 +13,7 @@ use crate::core::pipe::PipeProcessor;
 use crate::core::windows_named_pipe::WindowsNamedPipeProcessor;
 use crate::entity::instruct::InstructEntity;
 use crate::entity::manipulate::ManipulateEntity;
-use crate::entity::module::Module;
+use crate::entity::module::ModuleOperate;
 pub use crate::error::AppError;
 use crate::log::Log;
 
@@ -31,8 +31,8 @@ impl NihilityTerminal {
         let summary_config: SummaryConfig = SummaryConfig::init()?;
         Log::init(&summary_config.log)?;
 
-        let (module_se, module_re) =
-            mpsc::channel::<Module>(summary_config.module_manager.channel_buffer);
+        let (module_operate_se, module_operate_re) =
+            mpsc::channel::<ModuleOperate>(summary_config.module_manager.channel_buffer);
         let (instruct_se, instruct_re) =
             mpsc::channel::<InstructEntity>(summary_config.module_manager.channel_buffer);
         let (manipulate_se, manipulate_re) =
@@ -42,7 +42,7 @@ impl NihilityTerminal {
 
         let grpc_server_future = GrpcServer::start(
             &summary_config.grpc,
-            module_se.clone(),
+            module_operate_se.clone(),
             instruct_se.clone(),
             manipulate_se.clone(),
         );
@@ -58,7 +58,7 @@ impl NihilityTerminal {
         #[cfg(windows)]
         let pipe_processor_future = WindowsNamedPipeProcessor::start(
             &summary_config.windows_named_pipes,
-            module_se.clone(),
+            module_operate_se.clone(),
             instruct_se.clone(),
             manipulate_se.clone(),
         );
@@ -67,7 +67,7 @@ impl NihilityTerminal {
         let module_manager_future = module_manager::module_manager_builder(
             &summary_config.module_manager,
             encoder,
-            module_re,
+            module_operate_re,
             instruct_re,
             manipulate_re,
         );

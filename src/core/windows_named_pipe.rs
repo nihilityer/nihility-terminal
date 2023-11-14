@@ -9,7 +9,7 @@ use tokio::sync::mpsc::Sender;
 use crate::config::WindowsNamedPipesConfig;
 use crate::entity::instruct::InstructEntity;
 use crate::entity::manipulate::ManipulateEntity;
-use crate::entity::module::Module;
+use crate::entity::module::{ModuleOperate, OperateType};
 use crate::AppError;
 
 #[cfg(windows)]
@@ -19,7 +19,7 @@ pub struct WindowsNamedPipeProcessor;
 impl WindowsNamedPipeProcessor {
     pub async fn start(
         windows_named_pipe_config: &WindowsNamedPipesConfig,
-        module_sender: Sender<Module>,
+        module_operate_sender: Sender<ModuleOperate>,
         instruct_sender: Sender<InstructEntity>,
         manipulate_sender: Sender<ManipulateEntity>,
     ) -> Result<(), AppError> {
@@ -51,7 +51,7 @@ impl WindowsNamedPipeProcessor {
             .create(manipulate_pipe_name)?;
 
         tokio::try_join!(
-            Self::module_named_pipe_processor(module_sender, module_server),
+            Self::module_named_pipe_processor(module_operate_sender, module_server),
             Self::instruct_named_pipe_processor(instruct_sender, instruct_server),
             Self::manipulate_named_pipe_processor(manipulate_sender, manipulate_server),
         )?;
@@ -59,7 +59,7 @@ impl WindowsNamedPipeProcessor {
     }
 
     async fn module_named_pipe_processor(
-        module_sender: Sender<Module>,
+        module_operate_sender: Sender<ModuleOperate>,
         module_server: NamedPipeServer,
     ) -> Result<(), AppError> {
         loop {
@@ -75,8 +75,9 @@ impl WindowsNamedPipeProcessor {
                 Ok(n) => {
                     let result: ModuleInfo = ModuleInfo::decode(&data[..n])?;
                     tracing::debug!("named pipe model name:{:?}", &result.name);
-                    let model = Module::create_by_req(result).await?;
-                    module_sender.send(model).await?;
+                    let module_operate =
+                        ModuleOperate::create_by_req(result, OperateType::REGISTER)?;
+                    module_operate_sender.send(module_operate).await?;
                 }
                 Err(e) if e.kind() == io::ErrorKind::WouldBlock => continue,
                 Err(_) => {

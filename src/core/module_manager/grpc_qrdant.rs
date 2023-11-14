@@ -21,7 +21,7 @@ use crate::core::encoder::Encoder;
 use crate::core::module_manager::ModuleManager;
 use crate::entity::instruct::InstructEntity;
 use crate::entity::manipulate::ManipulateEntity;
-use crate::entity::module::Module;
+use crate::entity::module::{Module, ModuleOperate, OperateType};
 use crate::AppError;
 
 const COLLECTION_NAME: &str = "instruct";
@@ -36,7 +36,7 @@ pub struct GrpcQdrant;
 impl ModuleManager for GrpcQdrant {
     async fn start(
         encoder: Arc<Mutex<Box<dyn Encoder + Send>>>,
-        module_receiver: Receiver<Module>,
+        module_operate_receiver: Receiver<ModuleOperate>,
         instruct_receiver: Receiver<InstructEntity>,
         manipulate_receiver: Receiver<ManipulateEntity>,
     ) -> Result<(), AppError> {
@@ -84,7 +84,7 @@ impl ModuleManager for GrpcQdrant {
             module_list.clone(),
             qdrant_client.clone(),
             encoder,
-            module_receiver,
+            module_operate_receiver,
         );
 
         let instruct_feature = Self::manager_instruct(
@@ -211,59 +211,82 @@ impl GrpcQdrant {
         module_map: Arc<tokio::sync::Mutex<HashMap<String, Module>>>,
         qdrant_client: Arc<tokio::sync::Mutex<QdrantClient>>,
         instruct_encoder: Arc<Mutex<Box<dyn Encoder + Send>>>,
-        mut module_receiver: Receiver<Module>,
+        mut module_operate_receiver: Receiver<ModuleOperate>,
     ) -> Result<(), AppError> {
         tracing::debug!("module_receiver start recv");
-        while let Some(module) = module_receiver.recv().await {
-            tracing::info!("start register model：{:?}", &module.name);
-            let mut points = Vec::<PointStruct>::new();
-            // 此处操作需要同时获取两个锁，所以只有都获取时才进行操作，否则释放锁等待下次获取锁
-            loop {
-                let mut locked_module_map = module_map.lock().await;
-                match instruct_encoder.try_lock() {
-                    Ok(mut locked_instruct_encoder) => {
-                        tracing::debug!("lock locked_module_map, locked_instruct_encoder success");
-                        // 创建公共部分负载
-                        let mut payload = HashMap::<String, Value>::new();
-                        payload.insert(
-                            MODULE_NAME.to_string(),
+        while let Some(module_operate) = module_operate_receiver.recv().await {
+            match module_operate.operate_type {
+                OperateType::REGISTER => {
+                    let module = Module::create_by_operate(module_operate).await?;
+                    Self::register_sub_module(
+                        module_map.clone(),
+                        qdrant_client.clone(),
+                        instruct_encoder.clone(),
+                        module,
+                    )
+                    .await?;
+                }
+                OperateType::OFFLINE => {}
+                OperateType::HEARTBEAT => {}
+                OperateType::UPDATE => {}
+            }
+        }
+        Ok(())
+    }
+
+    async fn register_sub_module(
+        module_map: Arc<tokio::sync::Mutex<HashMap<String, Module>>>,
+        qdrant_client: Arc<tokio::sync::Mutex<QdrantClient>>,
+        instruct_encoder: Arc<Mutex<Box<dyn Encoder + Send>>>,
+        module: Module,
+    ) -> Result<(), AppError> {
+        tracing::info!("start register model：{:?}", &module.name);
+        let mut points = Vec::<PointStruct>::new();
+        // 此处操作需要同时获取两个锁，所以只有都获取时才进行操作，否则释放锁等待下次获取锁
+        loop {
+            let mut locked_module_map = module_map.lock().await;
+            match instruct_encoder.try_lock() {
+                Ok(mut locked_instruct_encoder) => {
+                    tracing::debug!("lock locked_module_map, locked_instruct_encoder success");
+                    // 创建公共部分负载
+                    let mut payload = HashMap::<String, Value>::new();
+                    payload.insert(
+                        MODULE_NAME.to_string(),
+                        Value {
+                            kind: Some(StringValue(module.name.to_string())),
+                        },
+                    );
+                    // 先将所有指令编码，之后统一插入，减少网络通信的损耗
+                    for instruct in &module.default_instruct {
+                        let mut instruct_payload = payload.clone();
+                        instruct_payload.insert(
+                            INSTRUCT.to_string(),
                             Value {
-                                kind: Some(StringValue(module.name.to_string())),
+                                kind: Some(StringValue(instruct.to_string())),
                             },
                         );
-                        // 先将所有指令编码，之后统一插入，减少网络通信的损耗
-                        for instruct in &module.default_instruct {
-                            let mut instruct_payload = payload.clone();
-                            instruct_payload.insert(
-                                INSTRUCT.to_string(),
-                                Value {
-                                    kind: Some(StringValue(instruct.to_string())),
-                                },
-                            );
-                            let encode_result =
-                                locked_instruct_encoder.encode(instruct.to_string())?;
-                            let id = Uuid::new_v4();
-                            points.push(PointStruct::new(
-                                id.to_string(),
-                                encode_result,
-                                Payload::new_from_hashmap(instruct_payload),
-                            ));
-                        }
-                        locked_module_map.insert(module.name.to_string(), module);
-                        break;
+                        let encode_result = locked_instruct_encoder.encode(instruct.to_string())?;
+                        let id = Uuid::new_v4();
+                        points.push(PointStruct::new(
+                            id.to_string(),
+                            encode_result,
+                            Payload::new_from_hashmap(instruct_payload),
+                        ));
                     }
-                    Err(_) => {
-                        drop(locked_module_map);
-                        continue;
-                    }
+                    locked_module_map.insert(module.name.to_string(), module);
+                    break;
+                }
+                Err(_) => {
+                    drop(locked_module_map);
+                    continue;
                 }
             }
-            let locked_qdrant_client = qdrant_client.lock().await;
-            // 目前以最新注册的模块指令为准，之后更新体验决定是否保留或继续覆盖
-            locked_qdrant_client
-                .upsert_points_batch_blocking(COLLECTION_NAME, points, None, CHUNK_SIZE)
-                .await?;
         }
+        let locked_qdrant_client = qdrant_client.lock().await;
+        // 目前以最新注册的模块指令为准，之后更新体验决定是否保留或继续覆盖
+        locked_qdrant_client
+            .upsert_points_batch_blocking(COLLECTION_NAME, points, None, CHUNK_SIZE)
+            .await?;
         Ok(())
     }
 }
