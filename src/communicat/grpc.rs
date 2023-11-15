@@ -82,14 +82,28 @@ impl SubModule for SubModuleImpl {
         &self,
         request: Request<ModuleInfo>,
     ) -> Result<Response<SubModuleResp>, Status> {
-        todo!()
+        let module =
+            ModuleOperate::create_by_req(request.into_inner(), OperateType::OFFLINE).unwrap();
+        tracing::info!("start offline model:{}", &module.name);
+        self.operate_module_sender.send(module).await.unwrap();
+        Ok(Response::new(SubModuleResp {
+            success: true,
+            resp_code: RespCode::Success.into(),
+        }))
     }
 
     async fn keep_alive(
         &self,
         request: Request<ModuleInfo>,
     ) -> Result<Response<SubModuleResp>, Status> {
-        todo!()
+        let module =
+            ModuleOperate::create_by_req(request.into_inner(), OperateType::HEARTBEAT).unwrap();
+        tracing::info!("get model:{} heartbeat", &module.name);
+        self.operate_module_sender.send(module).await.unwrap();
+        Ok(Response::new(SubModuleResp {
+            success: true,
+            resp_code: RespCode::Success.into(),
+        }))
     }
 }
 
