@@ -8,21 +8,21 @@ use async_trait::async_trait;
 use qdrant_client::prelude::{
     Distance, Payload, PointStruct, QdrantClient, QdrantClientConfig, Value,
 };
-use qdrant_client::qdrant::value::Kind::StringValue;
-use qdrant_client::qdrant::vectors_config::Config;
-use qdrant_client::qdrant::with_payload_selector::SelectorOptions::Enable;
 use qdrant_client::qdrant::{
     CreateCollection, ScoredPoint, SearchPoints, VectorParams, VectorsConfig, WithPayloadSelector,
 };
+use qdrant_client::qdrant::value::Kind::StringValue;
+use qdrant_client::qdrant::vectors_config::Config;
+use qdrant_client::qdrant::with_payload_selector::SelectorOptions::Enable;
 use tokio::sync::mpsc::Receiver;
 use uuid::Uuid;
 
+use crate::AppError;
 use crate::core::encoder::Encoder;
 use crate::core::module_manager::ModuleManager;
 use crate::entity::instruct::InstructEntity;
 use crate::entity::manipulate::ManipulateEntity;
 use crate::entity::module::{Module, ModuleOperate, OperateType};
-use crate::AppError;
 
 const COLLECTION_NAME: &str = "instruct";
 const MODULE_NAME: &str = "module_name";
@@ -94,11 +94,7 @@ impl ModuleManager for GrpcQdrant {
             instruct_receiver,
         );
 
-        let manipulate_feature = Self::manager_manipulate(
-            module_list.clone(),
-            qdrant_client.clone(),
-            manipulate_receiver,
-        );
+        let manipulate_feature = Self::manager_manipulate(module_list.clone(), manipulate_receiver);
 
         tokio::try_join!(module_feature, instruct_feature, manipulate_feature)?;
 
@@ -116,14 +112,20 @@ impl GrpcQdrant {
     /// 3、处理特定的错误
     async fn manager_manipulate(
         module_map: Arc<tokio::sync::Mutex<HashMap<String, Module>>>,
-        qdrant_client: Arc<tokio::sync::Mutex<QdrantClient>>,
         mut manipulate_receiver: Receiver<ManipulateEntity>,
     ) -> Result<(), AppError> {
         tracing::debug!("manipulate_receiver start recv");
         while let Some(manipulate) = manipulate_receiver.recv().await {
-            tracing::info!("get manipulate：{:?}", manipulate);
-            let _ = qdrant_client.lock().await;
-            tracing::debug!("get qdrant_client success");
+            tracing::info!("get manipulate：{:?}", &manipulate);
+            let mut locked_module_map = module_map.lock().await;
+            if let Some(module) = locked_module_map.get_mut(manipulate.use_module_name.as_str()) {
+                module.send_manipulate(manipulate).await?;
+            } else {
+                tracing::error!(
+                    "use module name {:?} cannot find in register sub module",
+                    manipulate.use_module_name.to_string()
+                )
+            }
         }
         Ok(())
     }
