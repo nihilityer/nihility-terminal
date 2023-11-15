@@ -5,6 +5,7 @@ use std::sync::Arc;
 use std::sync::Mutex;
 
 use async_trait::async_trait;
+use nihility_common::manipulate::ManipulateType;
 use qdrant_client::prelude::{
     Distance, Payload, PointStruct, QdrantClient, QdrantClientConfig, Value,
 };
@@ -117,6 +118,12 @@ impl GrpcQdrant {
         tracing::debug!("manipulate_receiver start recv");
         while let Some(manipulate) = manipulate_receiver.recv().await {
             tracing::info!("get manipulate：{:?}", &manipulate);
+            match manipulate.manipulate_type {
+                ManipulateType::OfflineType => {
+                    tracing::error!("Offline Type Manipulate Cannot Forward")
+                }
+                _ => {}
+            }
             let mut locked_module_map = module_map.lock().await;
             if let Some(module) = locked_module_map.get_mut(manipulate.use_module_name.as_str()) {
                 module.send_manipulate(manipulate).await?;
@@ -236,6 +243,7 @@ impl GrpcQdrant {
         Ok(())
     }
 
+    /// 注册类型模型操作处理
     async fn register_sub_module(
         module_map: Arc<tokio::sync::Mutex<HashMap<String, Module>>>,
         qdrant_client: Arc<tokio::sync::Mutex<QdrantClient>>,
@@ -250,6 +258,10 @@ impl GrpcQdrant {
             match instruct_encoder.try_lock() {
                 Ok(mut locked_instruct_encoder) => {
                     tracing::debug!("lock locked_module_map, locked_instruct_encoder success");
+                    if let Some(_) = locked_module_map.get(module.name.as_str()) {
+                        tracing::error!("The current submodule {:?} is registered", &module.name);
+                        return Err(AppError::RegisterError);
+                    }
                     // 创建公共部分负载
                     let mut payload = HashMap::<String, Value>::new();
                     payload.insert(

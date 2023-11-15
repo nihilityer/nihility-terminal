@@ -22,6 +22,9 @@ pub enum AppError {
     #[error("管道通讯{0}错误！")]
     PipeError(String),
 
+    #[error("Sub Module Register Error")]
+    RegisterError,
+
     #[error("ModuleOperate Mpsc unexpected shutdown")]
     ModuleOperateMpscMessageError(
         #[from] tokio::sync::mpsc::error::SendError<entity::module::ModuleOperate>,
