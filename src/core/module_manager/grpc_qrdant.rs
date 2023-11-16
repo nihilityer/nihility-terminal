@@ -6,24 +6,27 @@ use std::sync::Mutex;
 
 use async_trait::async_trait;
 use nihility_common::manipulate::ManipulateType;
+use qdrant_client::prelude::point_id::PointIdOptions;
 use qdrant_client::prelude::{
     Distance, Payload, PointStruct, QdrantClient, QdrantClientConfig, Value,
 };
-use qdrant_client::qdrant::{
-    CreateCollection, ScoredPoint, SearchPoints, VectorParams, VectorsConfig, WithPayloadSelector,
-};
+use qdrant_client::qdrant::points_selector::PointsSelectorOneOf;
 use qdrant_client::qdrant::value::Kind::StringValue;
 use qdrant_client::qdrant::vectors_config::Config;
 use qdrant_client::qdrant::with_payload_selector::SelectorOptions::Enable;
+use qdrant_client::qdrant::{
+    CreateCollection, PointId, PointsIdsList, PointsSelector, ScoredPoint, SearchPoints,
+    VectorParams, VectorsConfig, WithPayloadSelector,
+};
 use tokio::sync::mpsc::Receiver;
 use uuid::Uuid;
 
-use crate::AppError;
 use crate::core::encoder::Encoder;
 use crate::core::module_manager::ModuleManager;
 use crate::entity::instruct::InstructEntity;
 use crate::entity::manipulate::ManipulateEntity;
 use crate::entity::module::{Module, ModuleOperate, OperateType};
+use crate::AppError;
 
 const COLLECTION_NAME: &str = "instruct";
 const MODULE_NAME: &str = "module_name";
@@ -235,11 +238,50 @@ impl GrpcQdrant {
                     )
                     .await?;
                 }
-                OperateType::OFFLINE => {}
+                OperateType::OFFLINE => {
+                    Self::offline_sub_module(
+                        module_map.clone(),
+                        qdrant_client.clone(),
+                        module_operate,
+                    )
+                    .await?;
+                }
                 OperateType::HEARTBEAT => {}
                 OperateType::UPDATE => {}
             }
         }
+        Ok(())
+    }
+
+    async fn offline_sub_module(
+        module_map: Arc<tokio::sync::Mutex<HashMap<String, Module>>>,
+        qdrant_client: Arc<tokio::sync::Mutex<QdrantClient>>,
+        module_operate: ModuleOperate,
+    ) -> Result<(), AppError> {
+        let mut point_ids = Vec::<PointId>::new();
+        {
+            let mut locked_module_map = module_map.lock().await;
+            if let Some(module) = locked_module_map.get(module_operate.name.as_str()) {
+                for point_id in &module.instruct_points_id {
+                    point_ids.push(PointId {
+                        point_id_options: Some(PointIdOptions::Uuid(point_id.to_string())),
+                    });
+                }
+                locked_module_map.remove(module_operate.name.as_str());
+            }
+        }
+        let locked_qdrant_client = qdrant_client.lock().await;
+        locked_qdrant_client
+            .delete_points(
+                COLLECTION_NAME,
+                &PointsSelector {
+                    points_selector_one_of: Some(PointsSelectorOneOf::Points(PointsIdsList {
+                        ids: point_ids,
+                    })),
+                },
+                None,
+            )
+            .await?;
         Ok(())
     }
 
@@ -248,7 +290,7 @@ impl GrpcQdrant {
         module_map: Arc<tokio::sync::Mutex<HashMap<String, Module>>>,
         qdrant_client: Arc<tokio::sync::Mutex<QdrantClient>>,
         instruct_encoder: Arc<Mutex<Box<dyn Encoder + Send>>>,
-        module: Module,
+        mut module: Module,
     ) -> Result<(), AppError> {
         tracing::info!("start register model：{:?}", &module.name);
         let mut points = Vec::<PointStruct>::new();
@@ -281,6 +323,7 @@ impl GrpcQdrant {
                         );
                         let encode_result = locked_instruct_encoder.encode(instruct.to_string())?;
                         let id = Uuid::new_v4();
+                        module.instruct_points_id.push(id.to_string());
                         points.push(PointStruct::new(
                             id.to_string(),
                             encode_result,

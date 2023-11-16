@@ -6,16 +6,16 @@ use nihility_common::response_code::RespCode;
 use nihility_common::sub_module::{ModuleInfo, SubModuleType};
 use tonic::transport::Channel;
 
+use crate::AppError;
+use crate::communicat::{SendInstructOperate, SendManipulateOperate};
 #[cfg(unix)]
 use crate::communicat::pipe::{PipeUnixInstructClient, PipeUnixManipulateClient};
 #[cfg(windows)]
 use crate::communicat::windows_named_pipe::{
     WindowsNamedPipeInstructClient, WindowsNamedPipeManipulateClient,
 };
-use crate::communicat::{SendInstructOperate, SendManipulateOperate};
 use crate::entity::instruct::InstructEntity;
 use crate::entity::manipulate::ManipulateEntity;
-use crate::AppError;
 
 /// 操作子模块类型
 pub enum OperateType {
@@ -42,6 +42,7 @@ pub struct ModuleOperate {
 pub struct Module {
     pub name: String,
     pub default_instruct: Vec<String>,
+    pub instruct_points_id: Vec<String>,
     pub sub_module_type: SubModuleType,
     instruct_client: Box<dyn SendInstructOperate + Send>,
     manipulate_client: Box<dyn SendManipulateOperate + Send>,
@@ -100,6 +101,7 @@ impl Module {
         Ok(Module {
             name: operate.name,
             default_instruct: operate.default_instruct.into(),
+            instruct_points_id: Vec::<String>::new(),
             sub_module_type: operate.sub_module_type,
             instruct_client,
             manipulate_client,
@@ -118,6 +120,7 @@ impl Module {
         Ok(Module {
             name: operate.name,
             default_instruct: operate.default_instruct.into(),
+            instruct_points_id: Vec::<String>::new(),
             sub_module_type: operate.sub_module_type,
             instruct_client,
             manipulate_client,
@@ -135,6 +138,7 @@ impl Module {
         Ok(Module {
             name: operate.name,
             default_instruct: operate.default_instruct.into(),
+            instruct_points_id: Vec::<String>::new(),
             sub_module_type: operate.sub_module_type,
             instruct_client,
             manipulate_client,
