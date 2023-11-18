@@ -1,22 +1,56 @@
 use async_trait::async_trait;
 use nihility_common::instruct::instruct_client::InstructClient;
-use nihility_common::instruct::instruct_server::Instruct;
+use nihility_common::instruct::instruct_server::{Instruct, InstructServer};
 use nihility_common::instruct::{InstructReq, InstructResp};
 use nihility_common::manipulate::manipulate_client::ManipulateClient;
-use nihility_common::manipulate::manipulate_server::Manipulate;
+use nihility_common::manipulate::manipulate_server::{Manipulate, ManipulateServer};
 use nihility_common::manipulate::{ManipulateReq, ManipulateResp};
 use nihility_common::response_code::RespCode;
-use nihility_common::sub_module::sub_module_server::SubModule;
+use nihility_common::sub_module::sub_module_server::{SubModule, SubModuleServer};
 use nihility_common::sub_module::{ModuleInfo, SubModuleResp};
 use tokio::sync::mpsc::Sender;
-use tonic::transport::Channel;
+use tonic::transport::{Channel, Server};
 use tonic::{Request, Response, Status};
 
 use crate::communicat::{SendInstructOperate, SendManipulateOperate};
+use crate::config::GrpcConfig;
 use crate::entity::instruct::InstructEntity;
 use crate::entity::manipulate::ManipulateEntity;
 use crate::entity::module::{ModuleOperate, OperateType};
 use crate::AppError;
+
+pub struct GrpcServer;
+
+impl GrpcServer {
+    pub async fn start(
+        grpc_config: &GrpcConfig,
+        operate_module_sender: Sender<ModuleOperate>,
+        instruct_sender: Sender<InstructEntity>,
+        manipulate_sender: Sender<ManipulateEntity>,
+    ) -> Result<(), AppError> {
+        if grpc_config.enable {
+            let bind_addr = format!(
+                "{}:{}",
+                grpc_config.addr.to_string(),
+                grpc_config.port.to_string()
+            );
+            tracing::info!("Grpc Server bind at {}", &bind_addr);
+
+            Server::builder()
+                .add_service(SubModuleServer::new(SubModuleImpl::init(
+                    operate_module_sender,
+                )))
+                .add_service(InstructServer::new(InstructImpl::init(instruct_sender)))
+                .add_service(ManipulateServer::new(ManipulateImpl::init(
+                    manipulate_sender,
+                )))
+                .serve(bind_addr.parse()?)
+                .await?;
+        }
+
+        Ok(())
+    }
+}
 
 #[async_trait]
 impl SendInstructOperate for InstructClient<Channel> {

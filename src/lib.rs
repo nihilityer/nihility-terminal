@@ -2,15 +2,15 @@ extern crate nihility_common;
 
 use tokio::sync::mpsc;
 
+use crate::communicat::grpc::GrpcServer;
+use crate::communicat::multicast::Multicast;
+#[cfg(unix)]
+use crate::communicat::pipe::PipeProcessor;
+#[cfg(windows)]
+use crate::communicat::windows_named_pipe::WindowsNamedPipeProcessor;
 use crate::config::SummaryConfig;
 use crate::core::encoder;
-use crate::core::grpc::GrpcServer;
 use crate::core::module_manager;
-use crate::core::multicast::Multicast;
-#[cfg(unix)]
-use crate::core::pipe::PipeProcessor;
-#[cfg(windows)]
-use crate::core::windows_named_pipe::WindowsNamedPipeProcessor;
 use crate::entity::instruct::InstructEntity;
 use crate::entity::manipulate::ManipulateEntity;
 use crate::entity::module::ModuleOperate;

@@ -10,6 +10,7 @@ pub mod grpc;
 pub mod pipe;
 #[cfg(windows)]
 pub mod windows_named_pipe;
+pub mod multicast;
 
 /// 发送指令特征
 #[async_trait]
