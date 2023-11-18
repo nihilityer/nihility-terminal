@@ -247,7 +247,9 @@ impl GrpcQdrant {
                     .await?;
                 }
                 OperateType::HEARTBEAT => {}
-                OperateType::UPDATE => {}
+                OperateType::UPDATE => {
+
+                }
             }
         }
         Ok(())
@@ -262,7 +264,7 @@ impl GrpcQdrant {
         {
             let mut locked_module_map = module_map.lock().await;
             if let Some(module) = locked_module_map.get(module_operate.name.as_str()) {
-                for point_id in &module.instruct_points_id {
+                for (_, point_id) in &module.default_instruct_map {
                     point_ids.push(PointId {
                         point_id_options: Some(PointIdOptions::Uuid(point_id.to_string())),
                     });
@@ -313,7 +315,7 @@ impl GrpcQdrant {
                         },
                     );
                     // 先将所有指令编码，之后统一插入，减少网络通信的损耗
-                    for instruct in &module.default_instruct {
+                    for (instruct, _) in module.default_instruct_map.clone() {
                         let mut instruct_payload = payload.clone();
                         instruct_payload.insert(
                             INSTRUCT.to_string(),
@@ -323,7 +325,7 @@ impl GrpcQdrant {
                         );
                         let encode_result = locked_instruct_encoder.encode(instruct.to_string())?;
                         let id = Uuid::new_v4();
-                        module.instruct_points_id.push(id.to_string());
+                        module.default_instruct_map.insert(instruct.to_string(), id.to_string());
                         points.push(PointStruct::new(
                             id.to_string(),
                             encode_result,

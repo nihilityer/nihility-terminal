@@ -1,4 +1,5 @@
 use std::borrow::Borrow;
+use std::collections::HashMap;
 
 use nihility_common::instruct::instruct_client::InstructClient;
 use nihility_common::manipulate::manipulate_client::ManipulateClient;
@@ -41,8 +42,7 @@ pub struct ModuleOperate {
 /// 用于维护与子模块的连接以及处理对子模块的操作
 pub struct Module {
     pub name: String,
-    pub default_instruct: Vec<String>,
-    pub instruct_points_id: Vec<String>,
+    pub default_instruct_map: HashMap<String, String>,
     pub sub_module_type: SubModuleType,
     instruct_client: Box<dyn SendInstructOperate + Send>,
     manipulate_client: Box<dyn SendManipulateOperate + Send>,
@@ -97,6 +97,10 @@ impl Module {
         let manipulate_path = operate.addr[1].to_string();
         let instruct_client = Box::new(PipeUnixInstructClient::init(instruct_path)?);
         let manipulate_client = Box::new(PipeUnixManipulateClient::init(manipulate_path)?);
+        let mut instruct_map = HashMap::<String, String>::new();
+        for instruct in operate.default_instruct {
+            instruct_map.insert(instruct, String::new());
+        }
         tracing::debug!("create pipe model {} success", &req.name);
         Ok(Module {
             name: operate.name,
@@ -116,11 +120,14 @@ impl Module {
         let manipulate_path = operate.addr[1].to_string();
         let instruct_client = Box::new(WindowsNamedPipeInstructClient::init(instruct_path)?);
         let manipulate_client = Box::new(WindowsNamedPipeManipulateClient::init(manipulate_path)?);
+        let mut instruct_map = HashMap::<String, String>::new();
+        for instruct in operate.default_instruct {
+            instruct_map.insert(instruct, String::new());
+        }
         tracing::debug!("create pipe model {} success", &operate.name);
         Ok(Module {
             name: operate.name,
-            default_instruct: operate.default_instruct.into(),
-            instruct_points_id: Vec::<String>::new(),
+            default_instruct_map: instruct_map,
             sub_module_type: operate.sub_module_type,
             instruct_client,
             manipulate_client,
@@ -135,10 +142,14 @@ impl Module {
             Box::new(InstructClient::connect(grpc_addr.to_string()).await?);
         let manipulate_client: Box<ManipulateClient<Channel>> =
             Box::new(ManipulateClient::connect(grpc_addr.to_string()).await?);
+        let mut instruct_map = HashMap::<String, String>::new();
+        for instruct in operate.default_instruct {
+            instruct_map.insert(instruct, String::new());
+        }
+        tracing::debug!("create grpc model {} success", &operate.name);
         Ok(Module {
             name: operate.name,
-            default_instruct: operate.default_instruct.into(),
-            instruct_points_id: Vec::<String>::new(),
+            default_instruct_map: instruct_map,
             sub_module_type: operate.sub_module_type,
             instruct_client,
             manipulate_client,
