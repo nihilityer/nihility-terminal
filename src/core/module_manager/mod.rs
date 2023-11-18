@@ -11,7 +11,7 @@ use crate::entity::manipulate::ManipulateEntity;
 use crate::entity::module::ModuleOperate;
 use crate::AppError;
 
-mod grpc_qrdant;
+mod grpc_qdrant;
 
 /// 所有子模块管理模块都需要实现此特征
 #[async_trait]
@@ -37,7 +37,7 @@ pub async fn module_manager_builder(
         &module_manager_config.manager_type
     );
     return match module_manager_config.manager_type.to_lowercase().as_str() {
-        "grpc_qdrant" => Ok(grpc_qrdant::GrpcQdrant::start(
+        "grpc_qdrant" => Ok(grpc_qdrant::GrpcQdrant::start(
             encoder,
             module_operate_receiver,
             instruct_receiver,

@@ -248,13 +248,125 @@ impl GrpcQdrant {
                 }
                 OperateType::HEARTBEAT => {}
                 OperateType::UPDATE => {
-
+                    Self::update_sub_module(
+                        module_map.clone(),
+                        qdrant_client.clone(),
+                        instruct_encoder.clone(),
+                        module_operate,
+                    )
+                    .await?;
                 }
             }
         }
         Ok(())
     }
 
+    /// 更新子模块指令设置，如果要更新连接设置应该先离线然后注册，而不是发送更新操作
+    async fn update_sub_module(
+        module_map: Arc<tokio::sync::Mutex<HashMap<String, Module>>>,
+        qdrant_client: Arc<tokio::sync::Mutex<QdrantClient>>,
+        instruct_encoder: Arc<Mutex<Box<dyn Encoder + Send>>>,
+        module_operate: ModuleOperate,
+    ) -> Result<(), AppError> {
+        let mut new_instruct = HashMap::<String, Vec<f32>>::new();
+        let mut update_instruct_map = HashMap::<String, String>::new();
+        let mut remove_point_ids = Vec::<PointId>::new();
+        // 确认子模块指令新增的指令，获取去除指令的point_id，没有变化的指令直接获取point_id
+        {
+            let mut locked_module_map = module_map.lock().await;
+            if let Some(module) = locked_module_map.get_mut(module_operate.name.as_str()) {
+                let mut retain_instruct = Vec::<String>::new();
+                for instruct in module_operate.default_instruct.iter() {
+                    match module.default_instruct_map.get(instruct.as_str()) {
+                        None => {
+                            new_instruct.insert(instruct.to_string(), Vec::new());
+                        }
+                        Some(_) => {
+                            retain_instruct.push(instruct.to_string());
+                        }
+                    }
+                }
+                if module.default_instruct_map.len() > retain_instruct.len() {
+                    for instruct in retain_instruct {
+                        if let Some(point_id) = module.default_instruct_map.get(instruct.as_str()) {
+                            update_instruct_map.insert(instruct.to_string(), point_id.to_string());
+                            module.default_instruct_map.remove(instruct.as_str());
+                        }
+                    }
+                }
+                for (_, point_id) in module.default_instruct_map.iter() {
+                    remove_point_ids.push(PointId {
+                        point_id_options: Some(PointIdOptions::Uuid(point_id.to_string())),
+                    });
+                }
+            }
+        }
+        // 将新增指令编码
+        loop {
+            if let Ok(mut lock_encoder) = instruct_encoder.try_lock() {
+                for (instruct, _) in new_instruct.clone() {
+                    new_instruct.insert(
+                        instruct.to_string(),
+                        lock_encoder.encode(instruct.to_string())?,
+                    );
+                }
+                break;
+            }
+        }
+        // 将新增的指令分配的point_id存入，然后在qdrant上移除需要删除指令对应的点，最后插入新增指令的点
+        {
+            let locked_qdrant_client = qdrant_client.lock().await;
+            // 创建公共部分负载
+            let mut payload = HashMap::<String, Value>::new();
+            payload.insert(
+                MODULE_NAME.to_string(),
+                Value {
+                    kind: Some(StringValue(module_operate.name.to_string())),
+                },
+            );
+            let mut insert_points = Vec::<PointStruct>::new();
+            for (instruct, encode_result) in new_instruct {
+                let mut instruct_payload = payload.clone();
+                instruct_payload.insert(
+                    INSTRUCT.to_string(),
+                    Value {
+                        kind: Some(StringValue(instruct.to_string())),
+                    },
+                );
+                let id = Uuid::new_v4();
+                update_instruct_map.insert(instruct.to_string(), id.to_string());
+                insert_points.push(PointStruct::new(
+                    id.to_string(),
+                    encode_result.clone(),
+                    Payload::new_from_hashmap(instruct_payload),
+                ));
+            }
+            locked_qdrant_client
+                .delete_points(
+                    COLLECTION_NAME,
+                    &PointsSelector {
+                        points_selector_one_of: Some(PointsSelectorOneOf::Points(PointsIdsList {
+                            ids: remove_point_ids,
+                        })),
+                    },
+                    None,
+                )
+                .await?;
+            locked_qdrant_client
+                .upsert_points_batch_blocking(COLLECTION_NAME, insert_points, None, CHUNK_SIZE)
+                .await?;
+        }
+        // 最后替换default_instruct_map
+        {
+            let mut locked_module_map = module_map.lock().await;
+            if let Some(module) = locked_module_map.get_mut(module_operate.name.as_str()) {
+                module.default_instruct_map = update_instruct_map;
+            }
+        };
+        Ok(())
+    }
+
+    /// 离线子模块处理
     async fn offline_sub_module(
         module_map: Arc<tokio::sync::Mutex<HashMap<String, Module>>>,
         qdrant_client: Arc<tokio::sync::Mutex<QdrantClient>>,
@@ -325,7 +437,9 @@ impl GrpcQdrant {
                         );
                         let encode_result = locked_instruct_encoder.encode(instruct.to_string())?;
                         let id = Uuid::new_v4();
-                        module.default_instruct_map.insert(instruct.to_string(), id.to_string());
+                        module
+                            .default_instruct_map
+                            .insert(instruct.to_string(), id.to_string());
                         points.push(PointStruct::new(
                             id.to_string(),
                             encode_result,
