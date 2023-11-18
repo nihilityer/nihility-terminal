@@ -1,3 +1,4 @@
+use std::time::SystemTimeError;
 use thiserror::Error;
 
 use crate::entity;
@@ -24,6 +25,9 @@ pub enum AppError {
 
     #[error("Sub Module Register Error")]
     RegisterError,
+
+    #[error("Get System Time Error")]
+    SystemTimeError(#[from] SystemTimeError),
 
     #[error("ModuleOperate Mpsc unexpected shutdown")]
     ModuleOperateMpscMessageError(

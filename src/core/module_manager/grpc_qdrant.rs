@@ -3,6 +3,7 @@ use std::ops::Index;
 use std::string::ToString;
 use std::sync::Arc;
 use std::sync::Mutex;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use async_trait::async_trait;
 use nihility_common::manipulate::ManipulateType;
@@ -18,16 +19,17 @@ use qdrant_client::qdrant::{
     CreateCollection, PointId, PointsIdsList, PointsSelector, ScoredPoint, SearchPoints,
     VectorParams, VectorsConfig, WithPayloadSelector,
 };
-use tokio::sync::mpsc::Receiver;
+use tokio::sync::mpsc::{Receiver, Sender};
 use uuid::Uuid;
 
 use crate::core::encoder::Encoder;
 use crate::core::module_manager::ModuleManager;
 use crate::entity::instruct::InstructEntity;
 use crate::entity::manipulate::ManipulateEntity;
-use crate::entity::module::{Module, ModuleOperate, OperateType};
+use crate::entity::module::{ModuleOperate, OperateType, Submodule};
 use crate::AppError;
 
+const HEARTBEAT_TIME: u64 = 30;
 const COLLECTION_NAME: &str = "instruct";
 const MODULE_NAME: &str = "module_name";
 const INSTRUCT: &str = "instruct";
@@ -40,13 +42,14 @@ pub struct GrpcQdrant;
 impl ModuleManager for GrpcQdrant {
     async fn start(
         encoder: Arc<Mutex<Box<dyn Encoder + Send>>>,
+        module_operate_sender: Sender<ModuleOperate>,
         module_operate_receiver: Receiver<ModuleOperate>,
         instruct_receiver: Receiver<InstructEntity>,
         manipulate_receiver: Receiver<ManipulateEntity>,
     ) -> Result<(), AppError> {
         tracing::info!("GrpcQdrant start");
 
-        let module_list = Arc::new(tokio::sync::Mutex::new(HashMap::<String, Module>::new()));
+        let module_list = Arc::new(tokio::sync::Mutex::new(HashMap::<String, Submodule>::new()));
 
         let mut encode_size = 0;
         if let Ok(locked_encoder) = encoder.lock() {
@@ -91,6 +94,8 @@ impl ModuleManager for GrpcQdrant {
             module_operate_receiver,
         );
 
+        let heartbeat_feature = Self::manager_heartbeat(module_list.clone(), module_operate_sender);
+
         let instruct_feature = Self::manager_instruct(
             module_list.clone(),
             qdrant_client.clone(),
@@ -100,13 +105,38 @@ impl ModuleManager for GrpcQdrant {
 
         let manipulate_feature = Self::manager_manipulate(module_list.clone(), manipulate_receiver);
 
-        tokio::try_join!(module_feature, instruct_feature, manipulate_feature)?;
+        tokio::try_join!(
+            module_feature,
+            heartbeat_feature,
+            instruct_feature,
+            manipulate_feature
+        )?;
 
         Ok(())
     }
 }
 
 impl GrpcQdrant {
+    async fn manager_heartbeat(
+        module_map: Arc<tokio::sync::Mutex<HashMap<String, Submodule>>>,
+        module_operate_sender: Sender<ModuleOperate>,
+    ) -> Result<(), AppError> {
+        loop {
+            tracing::debug!("Make sure the module heartbeat is normal");
+            tokio::time::sleep(Duration::from_secs(HEARTBEAT_TIME)).await;
+            let mut locked_module_map = module_map.lock().await;
+            let now_timestamp = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs();
+            for (_, module) in locked_module_map.iter_mut() {
+                if now_timestamp - module.heartbeat_time > 2 * HEARTBEAT_TIME {
+                    tracing::info!("Submodule {:?} heartbeat exception", &module.name);
+                    let operate =
+                        ModuleOperate::create_by_submodule(&module, OperateType::OFFLINE)?;
+                    module_operate_sender.send(operate).await?;
+                }
+            }
+        }
+    }
+
     /// 处理操作的接收和转发
     ///
     /// 1、通过操作实体转发操作
@@ -115,7 +145,7 @@ impl GrpcQdrant {
     ///
     /// 3、处理特定的错误
     async fn manager_manipulate(
-        module_map: Arc<tokio::sync::Mutex<HashMap<String, Module>>>,
+        module_map: Arc<tokio::sync::Mutex<HashMap<String, Submodule>>>,
         mut manipulate_receiver: Receiver<ManipulateEntity>,
     ) -> Result<(), AppError> {
         tracing::debug!("manipulate_receiver start recv");
@@ -148,7 +178,7 @@ impl GrpcQdrant {
     ///
     /// 3、转发指令出现错误时选择性重试
     async fn manager_instruct(
-        module_map: Arc<tokio::sync::Mutex<HashMap<String, Module>>>,
+        module_map: Arc<tokio::sync::Mutex<HashMap<String, Submodule>>>,
         qdrant_client: Arc<tokio::sync::Mutex<QdrantClient>>,
         instruct_encoder: Arc<Mutex<Box<dyn Encoder + Send>>>,
         mut instruct_receiver: Receiver<InstructEntity>,
@@ -220,7 +250,7 @@ impl GrpcQdrant {
     ///
     /// 3、特定错误进行重试或只通知
     async fn manager_module(
-        module_map: Arc<tokio::sync::Mutex<HashMap<String, Module>>>,
+        module_map: Arc<tokio::sync::Mutex<HashMap<String, Submodule>>>,
         qdrant_client: Arc<tokio::sync::Mutex<QdrantClient>>,
         instruct_encoder: Arc<Mutex<Box<dyn Encoder + Send>>>,
         mut module_operate_receiver: Receiver<ModuleOperate>,
@@ -229,8 +259,8 @@ impl GrpcQdrant {
         while let Some(module_operate) = module_operate_receiver.recv().await {
             match module_operate.operate_type {
                 OperateType::REGISTER => {
-                    let module = Module::create_by_operate(module_operate).await?;
-                    Self::register_sub_module(
+                    let module = Submodule::create_by_operate(module_operate).await?;
+                    Self::register_submodule(
                         module_map.clone(),
                         qdrant_client.clone(),
                         instruct_encoder.clone(),
@@ -239,16 +269,18 @@ impl GrpcQdrant {
                     .await?;
                 }
                 OperateType::OFFLINE => {
-                    Self::offline_sub_module(
+                    Self::offline_submodule(
                         module_map.clone(),
                         qdrant_client.clone(),
                         module_operate,
                     )
                     .await?;
                 }
-                OperateType::HEARTBEAT => {}
+                OperateType::HEARTBEAT => {
+                    Self::update_submodule_heartbeat(module_map.clone(), module_operate).await?;
+                }
                 OperateType::UPDATE => {
-                    Self::update_sub_module(
+                    Self::update_submodule(
                         module_map.clone(),
                         qdrant_client.clone(),
                         instruct_encoder.clone(),
@@ -262,12 +294,16 @@ impl GrpcQdrant {
     }
 
     /// 更新子模块指令设置，如果要更新连接设置应该先离线然后注册，而不是发送更新操作
-    async fn update_sub_module(
-        module_map: Arc<tokio::sync::Mutex<HashMap<String, Module>>>,
+    async fn update_submodule(
+        module_map: Arc<tokio::sync::Mutex<HashMap<String, Submodule>>>,
         qdrant_client: Arc<tokio::sync::Mutex<QdrantClient>>,
         instruct_encoder: Arc<Mutex<Box<dyn Encoder + Send>>>,
         module_operate: ModuleOperate,
     ) -> Result<(), AppError> {
+        tracing::info!(
+            "Update Submodule {:?} Default Instruct",
+            &module_operate.name
+        );
         let mut new_instruct = HashMap::<String, Vec<f32>>::new();
         let mut update_instruct_map = HashMap::<String, String>::new();
         let mut remove_point_ids = Vec::<PointId>::new();
@@ -366,12 +402,27 @@ impl GrpcQdrant {
         Ok(())
     }
 
+    /// 更新子模块心跳时间
+    async fn update_submodule_heartbeat(
+        module_map: Arc<tokio::sync::Mutex<HashMap<String, Submodule>>>,
+        module_operate: ModuleOperate,
+    ) -> Result<(), AppError> {
+        tracing::debug!("Submodule {:?} Heartbeat", &module_operate.name);
+        let mut locked_module_map = module_map.lock().await;
+        if let Some(module) = locked_module_map.get_mut(module_operate.name.as_str()) {
+            let timestamp = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs();
+            module.heartbeat_time = timestamp;
+        }
+        Ok(())
+    }
+
     /// 离线子模块处理
-    async fn offline_sub_module(
-        module_map: Arc<tokio::sync::Mutex<HashMap<String, Module>>>,
+    async fn offline_submodule(
+        module_map: Arc<tokio::sync::Mutex<HashMap<String, Submodule>>>,
         qdrant_client: Arc<tokio::sync::Mutex<QdrantClient>>,
         module_operate: ModuleOperate,
     ) -> Result<(), AppError> {
+        tracing::info!("Offline Submodule {:?}", &module_operate.name);
         let mut point_ids = Vec::<PointId>::new();
         {
             let mut locked_module_map = module_map.lock().await;
@@ -399,12 +450,12 @@ impl GrpcQdrant {
         Ok(())
     }
 
-    /// 注册类型模型操作处理
-    async fn register_sub_module(
-        module_map: Arc<tokio::sync::Mutex<HashMap<String, Module>>>,
+    /// 注册子模块处理
+    async fn register_submodule(
+        module_map: Arc<tokio::sync::Mutex<HashMap<String, Submodule>>>,
         qdrant_client: Arc<tokio::sync::Mutex<QdrantClient>>,
         instruct_encoder: Arc<Mutex<Box<dyn Encoder + Send>>>,
-        mut module: Module,
+        mut module: Submodule,
     ) -> Result<(), AppError> {
         tracing::info!("start register model：{:?}", &module.name);
         let mut points = Vec::<PointStruct>::new();

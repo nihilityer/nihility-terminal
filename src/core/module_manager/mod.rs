@@ -2,7 +2,7 @@ use std::sync::Arc;
 use std::sync::Mutex;
 
 use async_trait::async_trait;
-use tokio::sync::mpsc::Receiver;
+use tokio::sync::mpsc::{Receiver, Sender};
 
 use crate::config::ModuleManagerConfig;
 use crate::core::encoder::Encoder;
@@ -19,6 +19,7 @@ pub trait ModuleManager {
     /// 只需要启动即可
     async fn start(
         encoder: Arc<Mutex<Box<dyn Encoder + Send>>>,
+        module_operate_sender: Sender<ModuleOperate>,
         module_operate_receiver: Receiver<ModuleOperate>,
         instruct_receiver: Receiver<InstructEntity>,
         manipulate_receiver: Receiver<ManipulateEntity>,
@@ -28,6 +29,7 @@ pub trait ModuleManager {
 pub async fn module_manager_builder(
     module_manager_config: &ModuleManagerConfig,
     encoder: Arc<Mutex<Box<dyn Encoder + Send>>>,
+    module_operate_sender: Sender<ModuleOperate>,
     module_operate_receiver: Receiver<ModuleOperate>,
     instruct_receiver: Receiver<InstructEntity>,
     manipulate_receiver: Receiver<ManipulateEntity>,
@@ -39,6 +41,7 @@ pub async fn module_manager_builder(
     return match module_manager_config.manager_type.to_lowercase().as_str() {
         "grpc_qdrant" => Ok(grpc_qdrant::GrpcQdrant::start(
             encoder,
+            module_operate_sender,
             module_operate_receiver,
             instruct_receiver,
             manipulate_receiver,

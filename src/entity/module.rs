@@ -1,5 +1,6 @@
 use std::borrow::Borrow;
 use std::collections::HashMap;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use nihility_common::instruct::instruct_client::InstructClient;
 use nihility_common::manipulate::manipulate_client::ManipulateClient;
@@ -7,16 +8,16 @@ use nihility_common::response_code::RespCode;
 use nihility_common::sub_module::{ModuleInfo, SubModuleType};
 use tonic::transport::Channel;
 
-use crate::AppError;
-use crate::communicat::{SendInstructOperate, SendManipulateOperate};
 #[cfg(unix)]
 use crate::communicat::pipe::{PipeUnixInstructClient, PipeUnixManipulateClient};
 #[cfg(windows)]
 use crate::communicat::windows_named_pipe::{
     WindowsNamedPipeInstructClient, WindowsNamedPipeManipulateClient,
 };
+use crate::communicat::{SendInstructOperate, SendManipulateOperate};
 use crate::entity::instruct::InstructEntity;
 use crate::entity::manipulate::ManipulateEntity;
+use crate::AppError;
 
 /// 操作子模块类型
 pub enum OperateType {
@@ -40,10 +41,11 @@ pub struct ModuleOperate {
 }
 
 /// 用于维护与子模块的连接以及处理对子模块的操作
-pub struct Module {
+pub struct Submodule {
     pub name: String,
     pub default_instruct_map: HashMap<String, String>,
     pub sub_module_type: SubModuleType,
+    pub heartbeat_time: u64,
     instruct_client: Box<dyn SendInstructOperate + Send>,
     manipulate_client: Box<dyn SendManipulateOperate + Send>,
 }
@@ -63,9 +65,29 @@ impl ModuleOperate {
             Err(AppError::ProstTransferError(String::from("model")))
         }
     }
+
+    /// 通过已创建子模块构建子模块操作，无法获取连接地址，当此时已不需要这个变量
+    ///
+    /// 目前用来心跳过期时离线模块
+    pub fn create_by_submodule(
+        submodule: &Submodule,
+        operate_type: OperateType,
+    ) -> Result<Self, AppError> {
+        let mut default_instruct = Vec::new();
+        for (instruct, _) in submodule.default_instruct_map.iter() {
+            default_instruct.push(instruct.to_string());
+        }
+        Ok(ModuleOperate {
+            name: submodule.name.to_string(),
+            default_instruct,
+            sub_module_type: submodule.sub_module_type.clone(),
+            addr: Vec::new(),
+            operate_type,
+        })
+    }
 }
 
-impl Module {
+impl Submodule {
     /// 统一实现由注册消息创建Module
     pub async fn create_by_operate(operate: ModuleOperate) -> Result<Self, AppError> {
         return match operate.sub_module_type {
@@ -91,7 +113,7 @@ impl Module {
 
     /// 创建pipe通信的子模块
     #[cfg(unix)]
-    fn create_pipe_module(operate: ModuleOperate) -> Result<Module, AppError> {
+    fn create_pipe_module(operate: ModuleOperate) -> Result<Submodule, AppError> {
         tracing::debug!("start create pipe model");
         let instruct_path = operate.addr[0].to_string();
         let manipulate_path = operate.addr[1].to_string();
@@ -101,12 +123,14 @@ impl Module {
         for instruct in operate.default_instruct {
             instruct_map.insert(instruct, String::new());
         }
+        let timestamp = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs();
         tracing::debug!("create pipe model {} success", &req.name);
-        Ok(Module {
+        Ok(Submodule {
             name: operate.name,
             default_instruct: operate.default_instruct.into(),
             instruct_points_id: Vec::<String>::new(),
             sub_module_type: operate.sub_module_type,
+            heartbeat_time: timestamp,
             instruct_client,
             manipulate_client,
         })
@@ -114,7 +138,7 @@ impl Module {
 
     /// 创建WindowsNamedPipe通信的子模块
     #[cfg(windows)]
-    fn create_windows_named_pipe_module(operate: ModuleOperate) -> Result<Module, AppError> {
+    fn create_windows_named_pipe_module(operate: ModuleOperate) -> Result<Submodule, AppError> {
         tracing::debug!("start create pipe model");
         let instruct_path = operate.addr[0].to_string();
         let manipulate_path = operate.addr[1].to_string();
@@ -124,18 +148,20 @@ impl Module {
         for instruct in operate.default_instruct {
             instruct_map.insert(instruct, String::new());
         }
+        let timestamp = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs();
         tracing::debug!("create pipe model {} success", &operate.name);
-        Ok(Module {
+        Ok(Submodule {
             name: operate.name,
             default_instruct_map: instruct_map,
             sub_module_type: operate.sub_module_type,
+            heartbeat_time: timestamp,
             instruct_client,
             manipulate_client,
         })
     }
 
     /// 创建grpc通信的子模块
-    async fn create_grpc_module(operate: ModuleOperate) -> Result<Module, AppError> {
+    async fn create_grpc_module(operate: ModuleOperate) -> Result<Submodule, AppError> {
         tracing::debug!("start create grpc model");
         let grpc_addr = operate.addr[0].to_string();
         let instruct_client: Box<InstructClient<Channel>> =
@@ -146,11 +172,13 @@ impl Module {
         for instruct in operate.default_instruct {
             instruct_map.insert(instruct, String::new());
         }
+        let timestamp = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs();
         tracing::debug!("create grpc model {} success", &operate.name);
-        Ok(Module {
+        Ok(Submodule {
             name: operate.name,
             default_instruct_map: instruct_map,
             sub_module_type: operate.sub_module_type,
+            heartbeat_time: timestamp,
             instruct_client,
             manipulate_client,
         })

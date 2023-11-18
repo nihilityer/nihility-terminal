@@ -67,6 +67,7 @@ impl NihilityTerminal {
         let module_manager_future = module_manager::module_manager_builder(
             &summary_config.module_manager,
             encoder,
+            module_operate_se.clone(),
             module_operate_re,
             instruct_re,
             manipulate_re,

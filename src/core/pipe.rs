@@ -13,7 +13,7 @@ use tokio::net::unix::pipe::{OpenOptions, Receiver};
 use crate::config::PipeConfig;
 use crate::entity::instruct::InstructEntity;
 use crate::entity::manipulate::ManipulateEntity;
-use crate::entity::module::Module;
+use crate::entity::module::Submodule;
 use crate::AppError;
 
 #[cfg(unix)]
@@ -23,7 +23,7 @@ pub struct PipeProcessor;
 impl PipeProcessor {
     pub async fn start(
         pipe_config: &PipeConfig,
-        module_sender: Sender<Module>,
+        module_sender: Sender<Submodule>,
         instruct_sender: Sender<InstructEntity>,
         manipulate_sender: Sender<ManipulateEntity>,
     ) -> Result<(), AppError> {
@@ -91,7 +91,7 @@ impl PipeProcessor {
 
     /// 负责接收pipe模块注册信息
     async fn module_pipe_processor(
-        module_sender: &Sender<Module>,
+        module_sender: &Sender<Submodule>,
         module_rx: &Receiver,
     ) -> Result<(), AppError> {
         module_rx.readable().await?;
@@ -102,7 +102,7 @@ impl PipeProcessor {
                 if n > 0 {
                     let result: ModuleInfoReq = ModuleInfoReq::decode(&msg[..n])?;
                     tracing::debug!("pipe model name:{:?}", &result.name);
-                    let model = Module::create_by_req(result).await?;
+                    let model = Submodule::create_by_req(result).await?;
                     module_sender.send(model).await?;
                 }
             }
