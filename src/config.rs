@@ -1,9 +1,10 @@
+use std::collections::HashMap;
 use std::fs::File;
 use std::io::Write;
 use std::path::Path;
 
-use figment::Figment;
 use figment::providers::{Format, Json, Serialized, Toml, Yaml};
+use figment::Figment;
 use local_ip_address::local_ip;
 use serde::{Deserialize, Serialize};
 
@@ -82,14 +83,20 @@ pub struct MulticastConfig {
     pub interval: u32,
 }
 
+#[derive(Deserialize, Serialize, Debug)]
+pub enum ManagerType {
+    GrpcQdrant,
+}
+
 /// 子模块管理相关配置（核心配置）
 ///
 /// 目前没有多少能正常配置的
 #[derive(Deserialize, Serialize)]
 pub struct ModuleManagerConfig {
-    pub manager_type: String,
+    pub manager_type: ManagerType,
     pub interval: u32,
     pub channel_buffer: usize,
+    pub config_map: HashMap<String, String>,
 }
 
 /// 指令编码模块配置
@@ -156,10 +163,16 @@ impl SummaryConfig {
             interval: 5,
         };
 
+        let mut config_map = HashMap::<String, String>::new();
+        config_map.insert(
+            "qdrant_grpc_addr".to_string(),
+            "http://192.168.0.100:6334".to_string(),
+        );
         let module_manager_config = ModuleManagerConfig {
-            manager_type: "grpc_qdrant".to_string(),
+            manager_type: ManagerType::GrpcQdrant,
             interval: 1,
             channel_buffer: 10,
+            config_map,
         };
 
         let encoder_config = EncoderConfig {
@@ -215,6 +228,6 @@ impl SummaryConfig {
             config_file.write_all(toml::to_string_pretty(&config)?.as_bytes())?;
             config_file.flush()?;
             Ok(config)
-        }
+        };
     }
 }

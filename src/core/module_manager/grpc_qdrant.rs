@@ -29,6 +29,7 @@ use crate::entity::manipulate::ManipulateEntity;
 use crate::entity::module::{ModuleOperate, OperateType, Submodule};
 use crate::AppError;
 
+pub const QDRANT_GRPC_ADDR: &str = "qdrant_grpc_addr";
 const HEARTBEAT_TIME: u64 = 30;
 const COLLECTION_NAME: &str = "instruct";
 const MODULE_NAME: &str = "module_name";
@@ -41,6 +42,7 @@ pub struct GrpcQdrant;
 #[async_trait]
 impl ModuleManager for GrpcQdrant {
     async fn start(
+        config: HashMap<String, String>,
         encoder: Arc<Mutex<Box<dyn Encoder + Send>>>,
         module_operate_sender: Sender<ModuleOperate>,
         module_operate_receiver: Receiver<ModuleOperate>,
@@ -56,7 +58,10 @@ impl ModuleManager for GrpcQdrant {
             encode_size = locked_encoder.encode_size();
         }
 
-        let qdrant_client = QdrantClientConfig::from_url("http://192.168.0.100:6334").build()?;
+        if let None = config.get(QDRANT_GRPC_ADDR) {
+            return Err(AppError::ConfigError(format!("Required configuration {:?} is missing", QDRANT_GRPC_ADDR)))
+        }
+        let qdrant_client = QdrantClientConfig::from_url(config.get(QDRANT_GRPC_ADDR).unwrap()).build()?;
 
         let mut collection_created = false;
         let collections = qdrant_client.list_collections().await?;

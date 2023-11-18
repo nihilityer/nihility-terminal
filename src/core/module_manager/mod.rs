@@ -1,10 +1,11 @@
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::Mutex;
 
 use async_trait::async_trait;
 use tokio::sync::mpsc::{Receiver, Sender};
 
-use crate::config::ModuleManagerConfig;
+use crate::config::{ManagerType, ModuleManagerConfig};
 use crate::core::encoder::Encoder;
 use crate::entity::instruct::InstructEntity;
 use crate::entity::manipulate::ManipulateEntity;
@@ -18,6 +19,7 @@ mod grpc_qdrant;
 pub trait ModuleManager {
     /// 只需要启动即可
     async fn start(
+        config: HashMap<String, String>,
         encoder: Arc<Mutex<Box<dyn Encoder + Send>>>,
         module_operate_sender: Sender<ModuleOperate>,
         module_operate_receiver: Receiver<ModuleOperate>,
@@ -35,20 +37,20 @@ pub async fn module_manager_builder(
     manipulate_receiver: Receiver<ManipulateEntity>,
 ) -> Result<(), AppError> {
     tracing::info!(
-        "Module Manager Type: {}",
+        "Module Manager Type: {:?}",
         &module_manager_config.manager_type
     );
-    return match module_manager_config.manager_type.to_lowercase().as_str() {
-        "grpc_qdrant" => Ok(grpc_qdrant::GrpcQdrant::start(
-            encoder,
-            module_operate_sender,
-            module_operate_receiver,
-            instruct_receiver,
-            manipulate_receiver,
-        )
-        .await?),
-        _ => Err(AppError::ModuleManagerError(
-            "not support manager type".to_string(),
-        )),
+    return match &module_manager_config.manager_type {
+        ManagerType::GrpcQdrant => {
+            Ok(grpc_qdrant::GrpcQdrant::start(
+                module_manager_config.config_map.clone(),
+                encoder,
+                module_operate_sender,
+                module_operate_receiver,
+                instruct_receiver,
+                manipulate_receiver,
+            )
+            .await?)
+        }
     };
 }
