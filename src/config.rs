@@ -18,14 +18,8 @@ const YAML_CONFIG_FILE_NAME: &str = "config.yaml";
 #[derive(Deserialize, Serialize)]
 pub struct SummaryConfig {
     pub log: LogConfig,
-    pub grpc: GrpcConfig,
-    #[cfg(unix)]
-    pub pipe: PipeConfig,
-    #[cfg(windows)]
-    pub windows_named_pipes: WindowsNamedPipesConfig,
-    pub multicast: MulticastConfig,
-    pub module_manager: ModuleManagerConfig,
-    pub encoder: EncoderConfig,
+    pub communicat: CommunicatConfig,
+    pub core: CoreConfig,
 }
 
 /// 日志相关配置
@@ -37,6 +31,22 @@ pub struct LogConfig {
     pub with_line_number: bool,
     pub with_thread_ids: bool,
     pub with_target: bool,
+}
+
+#[derive(Deserialize, Serialize)]
+pub struct CommunicatConfig {
+    pub grpc: GrpcConfig,
+    #[cfg(unix)]
+    pub pipe: PipeConfig,
+    #[cfg(windows)]
+    pub windows_named_pipes: WindowsNamedPipesConfig,
+    pub multicast: MulticastConfig,
+}
+
+#[derive(Deserialize, Serialize)]
+pub struct CoreConfig {
+    pub module_manager: ModuleManagerConfig,
+    pub encoder: EncoderConfig,
 }
 
 /// Grpc相关配置
@@ -181,23 +191,29 @@ impl SummaryConfig {
             model_name: "onnx_bge_small_zh".to_string(),
         };
 
-        #[cfg(unix)]
-        return Ok(SummaryConfig {
-            log: log_config,
-            grpc: grpc_config,
-            pipe: pipe_config,
-            multicast: multicast_config,
+        let core_config = CoreConfig {
             module_manager: module_manager_config,
             encoder: encoder_config,
-        });
+        };
+
         #[cfg(windows)]
-        return Ok(SummaryConfig {
-            log: log_config,
+        let communicat_config = CommunicatConfig {
             grpc: grpc_config,
             windows_named_pipes: windows_named_pipes_config,
             multicast: multicast_config,
-            module_manager: module_manager_config,
-            encoder: encoder_config,
+        };
+
+        #[cfg(unix)]
+        let communicat_config = CommunicatConfig {
+            grpc: grpc_config,
+            pipe: pipe_config,
+            multicast: multicast_config,
+        };
+
+        return Ok(SummaryConfig {
+            log: log_config,
+            core: core_config,
+            communicat: communicat_config,
         });
     }
 
@@ -221,8 +237,8 @@ impl SummaryConfig {
                 .extract()?;
             Ok(result)
         } else {
-            config.grpc.enable = false;
-            config.multicast.enable = false;
+            config.communicat.grpc.enable = false;
+            config.communicat.multicast.enable = false;
 
             let mut config_file = File::create(TOML_CONFIG_FILE_NAME)?;
             config_file.write_all(toml::to_string_pretty(&config)?.as_bytes())?;
