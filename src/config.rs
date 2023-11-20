@@ -33,7 +33,7 @@ pub struct LogConfig {
     pub with_target: bool,
 }
 
-#[derive(Deserialize, Serialize)]
+#[derive(Deserialize, Serialize, Clone)]
 pub struct CommunicatConfig {
     pub grpc: GrpcConfig,
     #[cfg(unix)]
@@ -43,14 +43,16 @@ pub struct CommunicatConfig {
     pub multicast: MulticastConfig,
 }
 
-#[derive(Deserialize, Serialize)]
+#[derive(Deserialize, Serialize, Clone)]
 pub struct CoreConfig {
-    pub module_manager: ModuleManagerConfig,
+    pub module_manager: InstructManagerConfig,
     pub encoder: EncoderConfig,
+    pub channel_buffer: usize,
 }
 
+
 /// Grpc相关配置
-#[derive(Deserialize, Serialize)]
+#[derive(Deserialize, Serialize, Clone)]
 pub struct GrpcConfig {
     pub enable: bool,
     pub addr: String,
@@ -60,7 +62,7 @@ pub struct GrpcConfig {
 /// unix管道通信相关配置
 ///
 /// 注：仅在unix系统上支持
-#[derive(Deserialize, Serialize)]
+#[derive(Deserialize, Serialize, Clone)]
 #[cfg(unix)]
 pub struct PipeConfig {
     pub enable: bool,
@@ -71,7 +73,7 @@ pub struct PipeConfig {
 }
 
 /// windows管道通信相关配置
-#[derive(Deserialize, Serialize)]
+#[derive(Deserialize, Serialize, Clone)]
 #[cfg(windows)]
 pub struct WindowsNamedPipesConfig {
     pub enable: bool,
@@ -82,7 +84,7 @@ pub struct WindowsNamedPipesConfig {
 }
 
 /// 组播相关配置
-#[derive(Deserialize, Serialize)]
+#[derive(Deserialize, Serialize, Clone)]
 pub struct MulticastConfig {
     pub enable: bool,
     pub bind_addr: String,
@@ -93,24 +95,22 @@ pub struct MulticastConfig {
     pub interval: u32,
 }
 
-#[derive(Deserialize, Serialize, Debug)]
-pub enum ManagerType {
+#[derive(Deserialize, Serialize, Debug, Clone)]
+pub enum InstructManagerType {
     GrpcQdrant,
 }
 
 /// 子模块管理相关配置（核心配置）
 ///
 /// 目前没有多少能正常配置的
-#[derive(Deserialize, Serialize)]
-pub struct ModuleManagerConfig {
-    pub manager_type: ManagerType,
-    pub interval: u32,
-    pub channel_buffer: usize,
+#[derive(Deserialize, Serialize, Clone)]
+pub struct InstructManagerConfig {
+    pub manager_type: InstructManagerType,
     pub config_map: HashMap<String, String>,
 }
 
 /// 指令编码模块配置
-#[derive(Deserialize, Serialize)]
+#[derive(Deserialize, Serialize, Clone)]
 pub struct EncoderConfig {
     pub encoder_type: String,
     pub model_path: String,
@@ -178,10 +178,8 @@ impl SummaryConfig {
             "qdrant_grpc_addr".to_string(),
             "http://192.168.0.100:6334".to_string(),
         );
-        let module_manager_config = ModuleManagerConfig {
-            manager_type: ManagerType::GrpcQdrant,
-            interval: 1,
-            channel_buffer: 10,
+        let module_manager_config = InstructManagerConfig {
+            manager_type: InstructManagerType::GrpcQdrant,
             config_map,
         };
 
@@ -194,6 +192,7 @@ impl SummaryConfig {
         let core_config = CoreConfig {
             module_manager: module_manager_config,
             encoder: encoder_config,
+            channel_buffer: 10,
         };
 
         #[cfg(windows)]

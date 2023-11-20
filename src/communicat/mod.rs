@@ -38,7 +38,7 @@ pub trait SendManipulateOperate {
 }
 
 pub async fn communicat_module_start(
-    config: &CommunicatConfig,
+    config: CommunicatConfig,
     operate_module_sender: Sender<ModuleOperate>,
     instruct_sender: Sender<InstructEntity>,
     manipulate_sender: Sender<ManipulateEntity>,

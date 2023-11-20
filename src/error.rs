@@ -1,3 +1,4 @@
+use std::num::ParseIntError;
 use std::time::SystemTimeError;
 use thiserror::Error;
 
@@ -25,6 +26,12 @@ pub enum AppError {
 
     #[error("Sub Module Register Error")]
     RegisterError,
+
+    #[error("Search Point Error")]
+    SearchPointError,
+
+    #[error("String Parse Int Error")]
+    ParseIntError(#[from] ParseIntError),
 
     #[error("Get System Time Error")]
     SystemTimeError(#[from] SystemTimeError),
