@@ -26,10 +26,6 @@ pub async fn core_start(
     instruct_receiver: Receiver<InstructEntity>,
     manipulate_receiver: Receiver<ManipulateEntity>,
 ) -> Result<(), AppError> {
-    tracing::info!(
-        "Module Manager Type: {:?}",
-        &core_config.module_manager.manager_type
-    );
     let module_map = Arc::new(tokio::sync::Mutex::new(HashMap::<String, Submodule>::new()));
     let encoder = encoder::encoder_builder(&core_config.encoder)?;
 
@@ -46,12 +42,10 @@ pub async fn core_start(
     let built_instruct_manager =
         instruct_manager::build_instruct_manager(core_config.module_manager).await?;
 
-    let instruct_encoder = encoder.clone();
-
     let module_feature = manager_module(
         module_map.clone(),
         built_instruct_manager.clone(),
-        encoder,
+        encoder.clone(),
         module_operate_receiver,
     );
 
@@ -60,7 +54,7 @@ pub async fn core_start(
     let instruct_feature = manager_instruct(
         module_map.clone(),
         built_instruct_manager.clone(),
-        instruct_encoder,
+        encoder.clone(),
         instruct_receiver,
     );
 
@@ -142,7 +136,7 @@ async fn manager_instruct(
 ) -> Result<(), AppError> {
     tracing::debug!("instruct_receiver start recv");
     while let Some(instruct) = instruct_receiver.recv().await {
-        tracing::info!("from mpsc receiver get instruct：{:?}", &instruct);
+        tracing::info!("get instruct：{:?}", &instruct);
         let mut encoded_instruct: Vec<f32> = Vec::new();
         if let Ok(mut encoder) = instruct_encoder.lock() {
             encoded_instruct.append(encoder.encode(instruct.instruct.to_string())?.as_mut());
@@ -158,7 +152,6 @@ async fn manager_instruct(
 
         let mut modules = module_map.lock().await;
         if let Some(module) = modules.get_mut(module_name.as_str()) {
-            tracing::debug!("get module by id result is {:?}", module.name);
             let send_resp = module.send_instruct(instruct).await?;
             tracing::debug!("send_instruct result: {:?}", send_resp);
             continue;
@@ -171,9 +164,7 @@ async fn manager_instruct(
 ///
 /// 1、定时获取子模块心跳，当离线时将对应子模块从模组中卸载
 ///
-/// 2、后续需要实现注册子模块的构建索引
-///
-/// 3、特定错误进行重试或只通知
+/// 2、特定错误进行重试或只通知
 async fn manager_module(
     module_map: Arc<tokio::sync::Mutex<HashMap<String, Submodule>>>,
     qdrant_client: Arc<tokio::sync::Mutex<Box<dyn InstructManager + Send>>>,
