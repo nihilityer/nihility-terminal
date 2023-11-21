@@ -3,12 +3,11 @@ use std::fs::File;
 use std::io::Write;
 use std::path::Path;
 
+use color_eyre::Result;
 use figment::providers::{Format, Json, Serialized, Toml, Yaml};
 use figment::Figment;
 use local_ip_address::local_ip;
 use serde::{Deserialize, Serialize};
-
-use crate::error::AppError;
 
 const JSON_CONFIG_FILE_NAME: &str = "config.json";
 const TOML_CONFIG_FILE_NAME: &str = "config.toml";
@@ -51,7 +50,6 @@ pub struct CoreConfig {
     pub encoder: EncoderConfig,
     pub channel_buffer: usize,
 }
-
 
 /// Grpc相关配置
 #[derive(Deserialize, Serialize, Clone)]
@@ -110,16 +108,22 @@ pub struct InstructManagerConfig {
     pub config_map: HashMap<String, String>,
 }
 
+/// 指令编码组件类型枚举
+#[derive(Deserialize, Serialize, Debug, Clone)]
+pub enum EncoderType {
+    SentenceTransformers,
+}
+
 /// 指令编码模块配置
 #[derive(Deserialize, Serialize, Clone)]
 pub struct EncoderConfig {
-    pub encoder_type: String,
+    pub encoder_type: EncoderType,
     pub model_path: String,
     pub model_name: String,
 }
 
 impl SummaryConfig {
-    fn default() -> Result<Self, AppError> {
+    fn default() -> Result<Self> {
         let local_ip_addr = local_ip()?;
 
         let log_config = LogConfig {
@@ -185,7 +189,7 @@ impl SummaryConfig {
         };
 
         let encoder_config = EncoderConfig {
-            encoder_type: "sentence_transformers".to_string(),
+            encoder_type: EncoderType::SentenceTransformers,
             model_path: "model".to_string(),
             model_name: "onnx_bge_small_zh".to_string(),
         };
@@ -218,7 +222,7 @@ impl SummaryConfig {
     }
 
     /// 当配置文件不存在时使用默认配置当配置文件不存在时使用默认配置
-    pub fn init() -> Result<Self, AppError> {
+    pub fn init() -> Result<Self> {
         let mut config = SummaryConfig::default()?;
 
         return if Path::try_exists(TOML_CONFIG_FILE_NAME.as_ref())? {

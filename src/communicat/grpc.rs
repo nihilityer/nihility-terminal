@@ -1,4 +1,5 @@
 use async_trait::async_trait;
+use color_eyre::{eyre::eyre, Result};
 use nihility_common::instruct::instruct_client::InstructClient;
 use nihility_common::instruct::instruct_server::{Instruct, InstructServer};
 use nihility_common::instruct::{InstructReq, InstructResp};
@@ -17,7 +18,6 @@ use crate::config::GrpcConfig;
 use crate::entity::instruct::InstructEntity;
 use crate::entity::manipulate::ManipulateEntity;
 use crate::entity::module::{ModuleOperate, OperateType};
-use crate::AppError;
 
 pub struct GrpcServer;
 
@@ -27,7 +27,7 @@ impl GrpcServer {
         operate_module_sender: Sender<ModuleOperate>,
         instruct_sender: Sender<InstructEntity>,
         manipulate_sender: Sender<ManipulateEntity>,
-    ) -> Result<(), AppError> {
+    ) -> Result<()> {
         if grpc_config.enable {
             let bind_addr = format!(
                 "{}:{}",
@@ -54,7 +54,7 @@ impl GrpcServer {
 
 #[async_trait]
 impl SendInstructOperate for InstructClient<Channel> {
-    async fn send(&mut self, instruct: InstructReq) -> Result<RespCode, AppError> {
+    async fn send(&mut self, instruct: InstructReq) -> Result<RespCode> {
         let result = self
             .send_instruct(Request::new(instruct))
             .await?
@@ -62,14 +62,17 @@ impl SendInstructOperate for InstructClient<Channel> {
         if let Some(resp_code) = RespCode::from_i32(result.resp_code) {
             Ok(resp_code)
         } else {
-            Err(AppError::GrpcModuleException("InstructClient".to_string()))
+            Err(eyre!(
+                "Cannot transform RespCode from resp_code: {:?}",
+                result.resp_code
+            ))
         }
     }
 }
 
 #[async_trait]
 impl SendManipulateOperate for ManipulateClient<Channel> {
-    async fn send(&mut self, manipulate: ManipulateReq) -> Result<RespCode, AppError> {
+    async fn send(&mut self, manipulate: ManipulateReq) -> Result<RespCode> {
         let result = self
             .send_manipulate(Request::new(manipulate))
             .await?
@@ -77,8 +80,9 @@ impl SendManipulateOperate for ManipulateClient<Channel> {
         if let Some(resp_code) = RespCode::from_i32(result.resp_code) {
             Ok(resp_code)
         } else {
-            Err(AppError::GrpcModuleException(
-                "ManipulateClient".to_string(),
+            Err(eyre!(
+                "Cannot transform RespCode from resp_code: {:?}",
+                result.resp_code
             ))
         }
     }

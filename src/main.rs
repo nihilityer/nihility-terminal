@@ -1,7 +1,9 @@
-use nihility_terminal::{AppError, NihilityTerminal};
+use color_eyre::Result;
+
+use nihility_terminal::NihilityTerminal;
 
 #[tokio::main]
-pub async fn main() -> Result<(), AppError> {
+pub async fn main() -> Result<()> {
     println!(
         r#"      ___                       ___                       ___                   ___           ___           ___           ___
      /\__\          ___        /\__\          ___        /\__\      ___        /\  \         |\__\         /\  \         /\  \
@@ -15,9 +17,6 @@ pub async fn main() -> Result<(), AppError> {
      /:/  /      \/__/         /:/  /      \/__/        \:\__\   \/__/                                    \:\__\        |:|  |
      \/__/                     \/__/                     \/__/                                             \/__/         \|__|    "#
     );
-    if let Err(e) = NihilityTerminal::start().await {
-        println!("{}", &e);
-        println!("{:?}", e)
-    }
+    NihilityTerminal::start().await?;
     Ok(())
 }

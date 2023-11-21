@@ -1,15 +1,16 @@
+use color_eyre::{eyre::eyre, Result};
 use time::macros::format_description;
 use time::UtcOffset;
 use tracing::Level;
-use crate::AppError;
+
 use crate::config::LogConfig;
 
 pub struct Log;
 
 impl Log {
-    pub fn init(config: &LogConfig) -> Result<(), AppError> {
+    pub fn init(config: &LogConfig) -> Result<()> {
         if !config.enable {
-            return Ok(())
+            return Ok(());
         }
         let mut subscriber = tracing_subscriber::fmt().compact();
         match config.level.to_lowercase().as_str() {
@@ -28,16 +29,18 @@ impl Log {
             "error" => {
                 subscriber = subscriber.with_max_level(Level::ERROR);
             }
-            _ => {
-                return Err(AppError::ConfigError("log".to_string()));
+            other => {
+                return Err(eyre!(
+                    "Log Module Config Error : Level {other} is not support"
+                ));
             }
         }
 
         let timer = tracing_subscriber::fmt::time::OffsetTime::new(
             UtcOffset::from_hms(8, 0, 0).unwrap(),
             format_description!(
-                    "[year]-[month]-[day] [hour]:[minute]:[second].[subsecond digits:3]"
-                ),
+                "[year]-[month]-[day] [hour]:[minute]:[second].[subsecond digits:3]"
+            ),
         );
         let subscriber = subscriber
             .with_file(config.with_file)

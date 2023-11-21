@@ -1,16 +1,16 @@
 use std::net::Ipv4Addr;
 use std::str::FromStr;
 
+use color_eyre::Result;
 use tokio::net::UdpSocket;
 use tokio::time::{self, Duration};
 
-use crate::AppError;
 use crate::config::MulticastConfig;
 
 pub struct Multicast;
 
 impl Multicast {
-    pub async fn start(multicast_config: &MulticastConfig) -> Result<(), AppError> {
+    pub async fn start(multicast_config: &MulticastConfig) -> Result<()> {
         if multicast_config.enable {
             tracing::info!("Multicast start");
             let mut bind_addr = multicast_config.bind_addr.to_string();

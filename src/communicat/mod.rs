@@ -1,4 +1,5 @@
 use async_trait::async_trait;
+use color_eyre::Result;
 use nihility_common::instruct::InstructReq;
 use nihility_common::manipulate::ManipulateReq;
 use nihility_common::response_code::RespCode;
@@ -14,7 +15,6 @@ use crate::config::CommunicatConfig;
 use crate::entity::instruct::InstructEntity;
 use crate::entity::manipulate::ManipulateEntity;
 use crate::entity::module::ModuleOperate;
-use crate::AppError;
 
 pub mod grpc;
 mod multicast;
@@ -27,14 +27,14 @@ pub mod windows_named_pipe;
 #[async_trait]
 pub trait SendInstructOperate {
     /// 发送指令
-    async fn send(&mut self, instruct: InstructReq) -> Result<RespCode, AppError>;
+    async fn send(&mut self, instruct: InstructReq) -> Result<RespCode>;
 }
 
 /// 发送操作特征
 #[async_trait]
 pub trait SendManipulateOperate {
     /// 发送操作
-    async fn send(&mut self, manipulate: ManipulateReq) -> Result<RespCode, AppError>;
+    async fn send(&mut self, manipulate: ManipulateReq) -> Result<RespCode>;
 }
 
 pub async fn communicat_module_start(
@@ -42,7 +42,7 @@ pub async fn communicat_module_start(
     operate_module_sender: Sender<ModuleOperate>,
     instruct_sender: Sender<InstructEntity>,
     manipulate_sender: Sender<ManipulateEntity>,
-) -> Result<(), AppError> {
+) -> Result<()> {
     let grpc_server_future = GrpcServer::start(
         &config.grpc,
         operate_module_sender.clone(),

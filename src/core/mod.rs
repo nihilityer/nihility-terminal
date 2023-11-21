@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+use color_eyre::{eyre::eyre, Result};
 use nihility_common::manipulate::ManipulateType;
 use tokio::sync::mpsc::{Receiver, Sender};
 use uuid::Uuid;
@@ -12,7 +13,6 @@ use crate::core::instruct_manager::{InstructManager, PointPayload};
 use crate::entity::instruct::InstructEntity;
 use crate::entity::manipulate::ManipulateEntity;
 use crate::entity::module::{ModuleOperate, OperateType, Submodule};
-use crate::AppError;
 
 pub mod encoder;
 pub mod instruct_manager;
@@ -25,7 +25,7 @@ pub async fn core_start(
     module_operate_receiver: Receiver<ModuleOperate>,
     instruct_receiver: Receiver<InstructEntity>,
     manipulate_receiver: Receiver<ManipulateEntity>,
-) -> Result<(), AppError> {
+) -> Result<()> {
     let module_map = Arc::new(tokio::sync::Mutex::new(HashMap::<String, Submodule>::new()));
     let encoder = encoder::encoder_builder(&core_config.encoder)?;
 
@@ -72,7 +72,7 @@ pub async fn core_start(
 async fn manager_heartbeat(
     module_map: Arc<tokio::sync::Mutex<HashMap<String, Submodule>>>,
     module_operate_sender: Sender<ModuleOperate>,
-) -> Result<(), AppError> {
+) -> Result<()> {
     loop {
         tracing::debug!("Make sure the module heartbeat is normal");
         tokio::time::sleep(Duration::from_secs(HEARTBEAT_TIME)).await;
@@ -98,7 +98,7 @@ async fn manager_heartbeat(
 async fn manager_manipulate(
     module_map: Arc<tokio::sync::Mutex<HashMap<String, Submodule>>>,
     mut manipulate_receiver: Receiver<ManipulateEntity>,
-) -> Result<(), AppError> {
+) -> Result<()> {
     tracing::debug!("manipulate_receiver start recv");
     while let Some(manipulate) = manipulate_receiver.recv().await {
         tracing::info!("get manipulate：{:?}", &manipulate);
@@ -133,7 +133,7 @@ async fn manager_instruct(
     qdrant_client: Arc<tokio::sync::Mutex<Box<dyn InstructManager + Send>>>,
     instruct_encoder: Arc<Mutex<Box<dyn Encoder + Send>>>,
     mut instruct_receiver: Receiver<InstructEntity>,
-) -> Result<(), AppError> {
+) -> Result<()> {
     tracing::debug!("instruct_receiver start recv");
     while let Some(instruct) = instruct_receiver.recv().await {
         tracing::info!("get instruct：{:?}", &instruct);
@@ -141,9 +141,7 @@ async fn manager_instruct(
         if let Ok(mut encoder) = instruct_encoder.lock() {
             encoded_instruct.append(encoder.encode(instruct.instruct.to_string())?.as_mut());
         } else {
-            return Err(AppError::ModuleManagerError(
-                "Failed to obtain sbert lock".to_string(),
-            ));
+            return Err(eyre!("Lock Instruct Encoder Error"));
         }
 
         let locked_instruct_manager = qdrant_client.lock().await;
@@ -170,7 +168,7 @@ async fn manager_module(
     qdrant_client: Arc<tokio::sync::Mutex<Box<dyn InstructManager + Send>>>,
     instruct_encoder: Arc<Mutex<Box<dyn Encoder + Send>>>,
     mut module_operate_receiver: Receiver<ModuleOperate>,
-) -> Result<(), AppError> {
+) -> Result<()> {
     tracing::debug!("module_receiver start recv");
     while let Some(module_operate) = module_operate_receiver.recv().await {
         match module_operate.operate_type {
@@ -211,7 +209,7 @@ async fn update_submodule(
     qdrant_client: Arc<tokio::sync::Mutex<Box<dyn InstructManager + Send>>>,
     instruct_encoder: Arc<Mutex<Box<dyn Encoder + Send>>>,
     module_operate: ModuleOperate,
-) -> Result<(), AppError> {
+) -> Result<()> {
     tracing::info!(
         "Update Submodule {:?} Default Instruct",
         &module_operate.name
@@ -293,7 +291,7 @@ async fn update_submodule(
 async fn update_submodule_heartbeat(
     module_map: Arc<tokio::sync::Mutex<HashMap<String, Submodule>>>,
     module_operate: ModuleOperate,
-) -> Result<(), AppError> {
+) -> Result<()> {
     tracing::debug!("Submodule {:?} Heartbeat", &module_operate.name);
     let mut locked_module_map = module_map.lock().await;
     if let Some(module) = locked_module_map.get_mut(module_operate.name.as_str()) {
@@ -308,7 +306,7 @@ async fn offline_submodule(
     module_map: Arc<tokio::sync::Mutex<HashMap<String, Submodule>>>,
     qdrant_client: Arc<tokio::sync::Mutex<Box<dyn InstructManager + Send>>>,
     module_operate: ModuleOperate,
-) -> Result<(), AppError> {
+) -> Result<()> {
     tracing::info!("Offline Submodule {:?}", &module_operate.name);
     let mut point_ids = Vec::<String>::new();
     {
@@ -331,7 +329,7 @@ async fn register_submodule(
     qdrant_client: Arc<tokio::sync::Mutex<Box<dyn InstructManager + Send>>>,
     instruct_encoder: Arc<Mutex<Box<dyn Encoder + Send>>>,
     mut module: Submodule,
-) -> Result<(), AppError> {
+) -> Result<()> {
     tracing::info!("start register model：{:?}", &module.name);
     let tmp_module_name = module.name.to_string();
     let mut points = Vec::<PointPayload>::new();
@@ -343,7 +341,10 @@ async fn register_submodule(
                 tracing::debug!("lock locked_module_map, locked_instruct_encoder success");
                 if let Some(_) = locked_module_map.get(module.name.as_str()) {
                     tracing::error!("The current submodule {:?} is registered", &module.name);
-                    return Err(AppError::RegisterError);
+                    return Err(eyre!(
+                        "The current submodule {:?} is registered",
+                        &module.name
+                    ));
                 }
                 for (instruct, _) in module.default_instruct_map.clone() {
                     let encode_result = locked_instruct_encoder.encode(instruct.to_string())?;

@@ -1,6 +1,7 @@
 use std::io;
 
 use async_trait::async_trait;
+use color_eyre::{eyre::eyre, Result};
 use nihility_common::instruct::{InstructReq, InstructResp};
 use nihility_common::manipulate::{ManipulateReq, ManipulateResp};
 use nihility_common::response_code::RespCode;
@@ -15,7 +16,6 @@ use crate::config::WindowsNamedPipesConfig;
 use crate::entity::instruct::InstructEntity;
 use crate::entity::manipulate::ManipulateEntity;
 use crate::entity::module::{ModuleOperate, OperateType};
-use crate::AppError;
 
 #[cfg(windows)]
 pub struct WindowsNamedPipeProcessor;
@@ -27,7 +27,7 @@ impl WindowsNamedPipeProcessor {
         module_operate_sender: Sender<ModuleOperate>,
         instruct_sender: Sender<InstructEntity>,
         manipulate_sender: Sender<ManipulateEntity>,
-    ) -> Result<(), AppError> {
+    ) -> Result<()> {
         if !windows_named_pipe_config.enable {
             return Ok(());
         }
@@ -66,16 +66,14 @@ impl WindowsNamedPipeProcessor {
     async fn module_named_pipe_processor(
         module_operate_sender: Sender<ModuleOperate>,
         module_server: NamedPipeServer,
-    ) -> Result<(), AppError> {
+    ) -> Result<()> {
         loop {
             module_server.readable().await?;
             let mut data = vec![0; 1024];
 
             match module_server.try_read(&mut data) {
                 Ok(0) => {
-                    return Err(AppError::PipeError(
-                        "module_named_pipe_processor read 0 size".to_string(),
-                    ));
+                    return Err(eyre!("module_named_pipe_processor read 0 size"));
                 }
                 Ok(n) => {
                     let result: ModuleInfo = ModuleInfo::decode(&data[..n])?;
@@ -85,10 +83,8 @@ impl WindowsNamedPipeProcessor {
                     module_operate_sender.send(module_operate).await?;
                 }
                 Err(e) if e.kind() == io::ErrorKind::WouldBlock => continue,
-                Err(_) => {
-                    return Err(AppError::PipeError(
-                        "module_named_pipe_processor".to_string(),
-                    ));
+                Err(e) => {
+                    return Err(e.into());
                 }
             }
         }
@@ -97,16 +93,14 @@ impl WindowsNamedPipeProcessor {
     async fn instruct_named_pipe_processor(
         instruct_sender: Sender<InstructEntity>,
         instruct_server: NamedPipeServer,
-    ) -> Result<(), AppError> {
+    ) -> Result<()> {
         loop {
             instruct_server.readable().await?;
             let mut data = vec![0; 1024];
 
             match instruct_server.try_read(&mut data) {
                 Ok(0) => {
-                    return Err(AppError::PipeError(
-                        "instruct_named_pipe_processor read 0 size".to_string(),
-                    ));
+                    return Err(eyre!("instruct_named_pipe_processor read 0 size"));
                 }
                 Ok(n) => {
                     let result: InstructReq = InstructReq::decode(&data[..n])?;
@@ -115,10 +109,8 @@ impl WindowsNamedPipeProcessor {
                     instruct_sender.send(instruct).await?;
                 }
                 Err(e) if e.kind() == io::ErrorKind::WouldBlock => continue,
-                Err(_) => {
-                    return Err(AppError::PipeError(
-                        "instruct_named_pipe_processor".to_string(),
-                    ));
+                Err(e) => {
+                    return Err(e.into());
                 }
             }
         }
@@ -127,16 +119,14 @@ impl WindowsNamedPipeProcessor {
     async fn manipulate_named_pipe_processor(
         manipulate_sender: Sender<ManipulateEntity>,
         manipulate_server: NamedPipeServer,
-    ) -> Result<(), AppError> {
+    ) -> Result<()> {
         loop {
             manipulate_server.readable().await?;
             let mut data = vec![0; 1024];
 
             match manipulate_server.try_read(&mut data) {
                 Ok(0) => {
-                    return Err(AppError::PipeError(
-                        "instruct_named_pipe_processor read 0 size".to_string(),
-                    ));
+                    return Err(eyre!("instruct_named_pipe_processor read 0 size"));
                 }
                 Ok(n) => {
                     let result: ManipulateReq = ManipulateReq::decode(&data[..n])?;
@@ -145,10 +135,8 @@ impl WindowsNamedPipeProcessor {
                     manipulate_sender.send(manipulate).await?;
                 }
                 Err(e) if e.kind() == io::ErrorKind::WouldBlock => continue,
-                Err(_) => {
-                    return Err(AppError::PipeError(
-                        "manipulate_named_pipe_processor".to_string(),
-                    ));
+                Err(e) => {
+                    return Err(e.into());
                 }
             }
         }
@@ -158,13 +146,14 @@ impl WindowsNamedPipeProcessor {
 #[cfg(windows)]
 #[async_trait]
 impl SendInstructOperate for WindowsNamedPipeInstructClient {
-    async fn send(&mut self, instruct: InstructReq) -> Result<RespCode, AppError> {
+    async fn send(&mut self, instruct: InstructReq) -> Result<RespCode> {
         let result = self.send_instruct(instruct).await?;
         if let Some(resp_code) = RespCode::from_i32(result.resp_code) {
             Ok(resp_code)
         } else {
-            Err(AppError::GrpcModuleException(
-                "WindowsNamedPipeInstructClient".to_string(),
+            Err(eyre!(
+                "Cannot transform RespCode from resp_code: {:?}",
+                result.resp_code
             ))
         }
     }
@@ -173,13 +162,14 @@ impl SendInstructOperate for WindowsNamedPipeInstructClient {
 #[cfg(windows)]
 #[async_trait]
 impl SendManipulateOperate for WindowsNamedPipeManipulateClient {
-    async fn send(&mut self, manipulate: ManipulateReq) -> Result<RespCode, AppError> {
+    async fn send(&mut self, manipulate: ManipulateReq) -> Result<RespCode> {
         let result = self.send_manipulate(manipulate).await?;
         if let Some(resp_code) = RespCode::from_i32(result.resp_code) {
             Ok(resp_code)
         } else {
-            Err(AppError::GrpcModuleException(
-                "WindowsNamedPipeManipulateClient".to_string(),
+            Err(eyre!(
+                "Cannot transform RespCode from resp_code: {:?}",
+                result.resp_code
             ))
         }
     }
@@ -197,7 +187,7 @@ pub struct WindowsNamedPipeManipulateClient {
 
 #[cfg(windows)]
 impl WindowsNamedPipeInstructClient {
-    pub fn init(path: String) -> Result<Self, AppError> {
+    pub fn init(path: String) -> Result<Self> {
         tracing::debug!("open instruct pipe sender from {}", &path);
         let sender = ClientOptions::new().open(path)?;
         Ok(WindowsNamedPipeInstructClient {
@@ -205,7 +195,7 @@ impl WindowsNamedPipeInstructClient {
         })
     }
 
-    pub async fn send_instruct(&self, instruct_req: InstructReq) -> Result<InstructResp, AppError> {
+    pub async fn send_instruct(&self, instruct_req: InstructReq) -> Result<InstructResp> {
         loop {
             self.instruct_sender.writable().await?;
             let mut data = vec![0; 1024];
@@ -233,7 +223,7 @@ impl WindowsNamedPipeInstructClient {
 
 #[cfg(windows)]
 impl WindowsNamedPipeManipulateClient {
-    pub fn init(path: String) -> Result<Self, AppError> {
+    pub fn init(path: String) -> Result<Self> {
         tracing::debug!("open manipulate pipe sender from {}", &path);
         let sender = ClientOptions::new().open(path)?;
         Ok(WindowsNamedPipeManipulateClient {
@@ -241,10 +231,7 @@ impl WindowsNamedPipeManipulateClient {
         })
     }
 
-    pub async fn send_manipulate(
-        &self,
-        manipulate_req: ManipulateReq,
-    ) -> Result<ManipulateResp, AppError> {
+    pub async fn send_manipulate(&self, manipulate_req: ManipulateReq) -> Result<ManipulateResp> {
         loop {
             self.manipulate_sender.writable().await?;
             let mut data = vec![0; 1024];

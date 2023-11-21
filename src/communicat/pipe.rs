@@ -1,4 +1,5 @@
 use async_trait::async_trait;
+use color_eyre::{eyre::eyre, Result};
 use nihility_common::module_info::ModuleInfoReq;
 
 #[cfg(unix)]
@@ -11,7 +12,7 @@ impl PipeProcessor {
         module_sender: Sender<Submodule>,
         instruct_sender: Sender<InstructEntity>,
         manipulate_sender: Sender<ManipulateEntity>,
-    ) -> Result<(), AppError> {
+    ) -> Result<()> {
         if !pipe_config.enable {
             return Ok(());
         }
@@ -78,7 +79,7 @@ impl PipeProcessor {
     async fn module_pipe_processor(
         module_sender: &Sender<Submodule>,
         module_rx: &Receiver,
-    ) -> Result<(), AppError> {
+    ) -> Result<()> {
         module_rx.readable().await?;
         let mut msg = vec![0; 1024];
 
@@ -92,8 +93,8 @@ impl PipeProcessor {
                 }
             }
             Err(e) if e.kind() == io::ErrorKind::WouldBlock => {}
-            Err(_) => {
-                return Err(AppError::PipeError("model".to_string()));
+            Err(e) => {
+                return Err(e.into());
             }
         }
         Ok(())
@@ -103,7 +104,7 @@ impl PipeProcessor {
     async fn instruct_pipe_processor(
         instruct_sender: &Sender<InstructEntity>,
         instruct_rx: &Receiver,
-    ) -> Result<(), AppError> {
+    ) -> Result<()> {
         instruct_rx.readable().await?;
         let mut data = vec![0; 1024];
 
@@ -117,8 +118,8 @@ impl PipeProcessor {
                 }
             }
             Err(e) if e.kind() == io::ErrorKind::WouldBlock => {}
-            Err(_) => {
-                return Err(AppError::PipeError("model".to_string()));
+            Err(e) => {
+                return Err(e.into());
             }
         }
         Ok(())
@@ -128,7 +129,7 @@ impl PipeProcessor {
     async fn manipulate_pipe_processor(
         manipulate_sender: &Sender<ManipulateEntity>,
         manipulate_rx: &Receiver,
-    ) -> Result<(), AppError> {
+    ) -> Result<()> {
         manipulate_rx.readable().await?;
         let mut data = vec![0; 1024];
 
@@ -142,8 +143,8 @@ impl PipeProcessor {
                 }
             }
             Err(e) if e.kind() == io::ErrorKind::WouldBlock => {}
-            Err(_) => {
-                return Err(AppError::PipeError("model".to_string()));
+            Err(e) => {
+                return Err(e.into());
             }
         }
         Ok(())
@@ -153,7 +154,7 @@ impl PipeProcessor {
 #[cfg(unix)]
 #[async_trait]
 impl SendInstructOperate for PipeUnixInstructClient {
-    async fn send(&mut self, instruct: InstructReq) -> Result<RespCode, AppError> {
+    async fn send(&mut self, instruct: InstructReq) -> Result<RespCode> {
         let result = self.send_instruct(instruct).await?;
         Ok(result.status)
     }
@@ -162,7 +163,7 @@ impl SendInstructOperate for PipeUnixInstructClient {
 #[cfg(unix)]
 #[async_trait]
 impl SendManipulateOperate for PipeUnixManipulateClient {
-    async fn send(&mut self, manipulate: ManipulateReq) -> Result<RespCode, AppError> {
+    async fn send(&mut self, manipulate: ManipulateReq) -> Result<RespCode> {
         let result = self.send_manipulate(manipulate).await?;
         Ok(result.status)
     }
@@ -180,7 +181,7 @@ pub struct PipeUnixManipulateClient {
 
 #[cfg(unix)]
 impl PipeUnixInstructClient {
-    pub fn init(path: String) -> Result<Self, AppError> {
+    pub fn init(path: String) -> Result<Self> {
         tracing::debug!("open instruct pipe sender from {}", &path);
         let sender = OpenOptions::new().open_sender(path)?;
         Ok(PipeUnixInstructClient {
@@ -188,7 +189,7 @@ impl PipeUnixInstructClient {
         })
     }
 
-    pub async fn send_instruct(&self, instruct_req: InstructReq) -> Result<InstructResp, AppError> {
+    pub async fn send_instruct(&self, instruct_req: InstructReq) -> Result<InstructResp> {
         loop {
             self.instruct_sender.writable().await?;
             let mut data = vec![0; 1024];
@@ -213,7 +214,7 @@ impl PipeUnixInstructClient {
 
 #[cfg(unix)]
 impl PipeUnixManipulateClient {
-    pub fn init(path: String) -> Result<Self, AppError> {
+    pub fn init(path: String) -> Result<Self> {
         tracing::debug!("open manipulate pipe sender from {}", &path);
         let sender = OpenOptions::new().open_sender(path)?;
         Ok(PipeUnixManipulateClient {
@@ -224,7 +225,7 @@ impl PipeUnixManipulateClient {
     pub async fn send_manipulate(
         &self,
         manipulate_req: ManipulateReq,
-    ) -> Result<ManipulateResp, AppError> {
+    ) -> Result<ManipulateResp> {
         loop {
             self.manipulate_sender.writable().await?;
             let mut data = vec![0; 1024];

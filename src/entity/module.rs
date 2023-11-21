@@ -2,6 +2,7 @@ use std::borrow::Borrow;
 use std::collections::HashMap;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use color_eyre::{eyre::eyre, Result};
 use nihility_common::instruct::instruct_client::InstructClient;
 use nihility_common::manipulate::manipulate_client::ManipulateClient;
 use nihility_common::response_code::RespCode;
@@ -17,7 +18,6 @@ use crate::communicat::windows_named_pipe::{
 use crate::communicat::{SendInstructOperate, SendManipulateOperate};
 use crate::entity::instruct::InstructEntity;
 use crate::entity::manipulate::ManipulateEntity;
-use crate::AppError;
 
 /// 操作子模块类型
 pub enum OperateType {
@@ -52,7 +52,7 @@ pub struct Submodule {
 
 impl ModuleOperate {
     /// 通过应用间消息创建操作子模块消息结构体，由调用的方法决定结构体类型
-    pub fn create_by_req(req: ModuleInfo, operate_type: OperateType) -> Result<Self, AppError> {
+    pub fn create_by_req(req: ModuleInfo, operate_type: OperateType) -> Result<Self> {
         if let Some(sub_module_type) = SubModuleType::from_i32(req.sub_module_type) {
             Ok(ModuleOperate {
                 name: req.name,
@@ -62,17 +62,14 @@ impl ModuleOperate {
                 operate_type,
             })
         } else {
-            Err(AppError::ProstTransferError(String::from("model")))
+            Err(eyre!("Cannot transform SubmoduleType from req: {:?}", req))
         }
     }
 
     /// 通过已创建子模块构建子模块操作，无法获取连接地址，当此时已不需要这个变量
     ///
     /// 目前用来心跳过期时离线模块
-    pub fn create_by_submodule(
-        submodule: &Submodule,
-        operate_type: OperateType,
-    ) -> Result<Self, AppError> {
+    pub fn create_by_submodule(submodule: &Submodule, operate_type: OperateType) -> Result<Self> {
         let mut default_instruct = Vec::new();
         for (instruct, _) in submodule.default_instruct_map.iter() {
             default_instruct.push(instruct.to_string());
@@ -89,21 +86,19 @@ impl ModuleOperate {
 
 impl Submodule {
     /// 统一实现由注册消息创建Module
-    pub async fn create_by_operate(operate: ModuleOperate) -> Result<Self, AppError> {
+    pub async fn create_by_operate(operate: ModuleOperate) -> Result<Self> {
         return match operate.sub_module_type {
             SubModuleType::GrpcType => Ok(Self::create_grpc_module(operate).await?),
             SubModuleType::PipeType => {
                 #[cfg(unix)]
                 return Ok(Self::create_pipe_module(operate)?);
                 #[cfg(windows)]
-                return Err(AppError::ModuleManagerError(
-                    "not support model type".to_string(),
-                ));
+                return Err(eyre!("This OS cannot create PipeType Submodule"));
             }
             SubModuleType::WindowsNamedPipeType => {
                 #[cfg(unix)]
-                return Err(AppError::ModuleManagerError(
-                    "not support model type".to_string(),
+                return Err(eyre!(
+                    "This OS cannot create WindowsNamedPipeType Submodule"
                 ));
                 #[cfg(windows)]
                 return Ok(Self::create_windows_named_pipe_module(operate)?);
@@ -113,7 +108,7 @@ impl Submodule {
 
     /// 创建pipe通信的子模块
     #[cfg(unix)]
-    fn create_pipe_module(operate: ModuleOperate) -> Result<Submodule, AppError> {
+    fn create_pipe_module(operate: ModuleOperate) -> Result<Submodule> {
         tracing::debug!("start create pipe model");
         let instruct_path = operate.addr[0].to_string();
         let manipulate_path = operate.addr[1].to_string();
@@ -138,7 +133,7 @@ impl Submodule {
 
     /// 创建WindowsNamedPipe通信的子模块
     #[cfg(windows)]
-    fn create_windows_named_pipe_module(operate: ModuleOperate) -> Result<Submodule, AppError> {
+    fn create_windows_named_pipe_module(operate: ModuleOperate) -> Result<Submodule> {
         tracing::debug!("start create pipe model");
         let instruct_path = operate.addr[0].to_string();
         let manipulate_path = operate.addr[1].to_string();
@@ -161,7 +156,7 @@ impl Submodule {
     }
 
     /// 创建grpc通信的子模块
-    async fn create_grpc_module(operate: ModuleOperate) -> Result<Submodule, AppError> {
+    async fn create_grpc_module(operate: ModuleOperate) -> Result<Submodule> {
         tracing::debug!("start create grpc model");
         let grpc_addr = operate.addr[0].to_string();
         let instruct_client: Box<InstructClient<Channel>> =
@@ -185,7 +180,7 @@ impl Submodule {
     }
 
     /// 模块发送指令由此方法统一执行
-    pub async fn send_instruct(&mut self, instruct: InstructEntity) -> Result<bool, AppError> {
+    pub async fn send_instruct(&mut self, instruct: InstructEntity) -> Result<bool> {
         tracing::debug!("send instruct client type:{:?}", self.sub_module_type);
         let result = self.instruct_client.send(instruct.create_req()).await?;
         if result.eq(RespCode::Success.borrow()) {
@@ -200,10 +195,7 @@ impl Submodule {
     }
 
     /// 模块发送操作由此模块统一执行
-    pub async fn send_manipulate(
-        &mut self,
-        manipulate: ManipulateEntity,
-    ) -> Result<bool, AppError> {
+    pub async fn send_manipulate(&mut self, manipulate: ManipulateEntity) -> Result<bool> {
         tracing::debug!("send manipulate client type:{:?}", self.sub_module_type);
         let result = self.manipulate_client.send(manipulate.create_req()).await?;
         if result.eq(RespCode::Success.borrow()) {

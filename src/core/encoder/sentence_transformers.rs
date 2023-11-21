@@ -1,12 +1,12 @@
 use std::ops::Deref;
 
+use color_eyre::{eyre::eyre, Result};
 use ndarray::{Array1, Axis, CowArray};
 use ort::tensor::OrtOwnedTensor;
 use ort::{Environment, ExecutionProvider, GraphOptimizationLevel, Session, SessionBuilder, Value};
 use tokenizers::Tokenizer;
 
 use crate::core::encoder::Encoder;
-use crate::AppError;
 
 const ENCODE_SIZE: u64 = 512;
 
@@ -16,7 +16,7 @@ pub struct SentenceTransformers {
 }
 
 impl Encoder for SentenceTransformers {
-    fn init(model_path: String, model_name: String) -> Result<Self, AppError>
+    fn init(model_path: String, model_name: String) -> Result<Self>
     where
         Self: Sized,
     {
@@ -42,7 +42,7 @@ impl Encoder for SentenceTransformers {
         Ok(encoder)
     }
 
-    fn encode(&mut self, input: String) -> Result<Vec<f32>, AppError> {
+    fn encode(&mut self, input: String) -> Result<Vec<f32>> {
         let encoding = self.tokenizer.encode(input, false).unwrap();
         tracing::debug!("encoding: {:?}", &encoding);
 
@@ -104,7 +104,7 @@ impl Encoder for SentenceTransformers {
             tracing::debug!("encode result len:{:?}", result.len());
             return Ok(result);
         } else {
-            return Err(AppError::ModuleManagerError("encode error".to_string()));
+            return Err(eyre!("Encode Result Transform Error"));
         }
     }
 

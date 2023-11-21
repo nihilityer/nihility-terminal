@@ -1,25 +1,24 @@
 extern crate nihility_common;
 
+use color_eyre::Result;
 use tokio::sync::mpsc;
 
 use crate::config::SummaryConfig;
 use crate::entity::instruct::InstructEntity;
 use crate::entity::manipulate::ManipulateEntity;
 use crate::entity::module::ModuleOperate;
-pub use crate::error::AppError;
 use crate::log::Log;
 
 mod communicat;
 mod config;
 mod core;
 mod entity;
-mod error;
 mod log;
 
 pub struct NihilityTerminal;
 
 impl NihilityTerminal {
-    pub async fn start() -> Result<(), AppError> {
+    pub async fn start() -> Result<()> {
         let summary_config: SummaryConfig = SummaryConfig::init()?;
         Log::init(&summary_config.log)?;
 
