@@ -33,6 +33,7 @@ pub struct LogConfig {
     pub with_target: bool,
 }
 
+/// 交流组件总配置
 #[derive(Deserialize, Serialize, Clone)]
 pub struct CommunicatConfig {
     pub grpc: GrpcConfig,
@@ -43,6 +44,7 @@ pub struct CommunicatConfig {
     pub multicast: MulticastConfig,
 }
 
+/// 核心组件总配置
 #[derive(Deserialize, Serialize, Clone)]
 pub struct CoreConfig {
     pub module_manager: InstructManagerConfig,
@@ -61,7 +63,7 @@ pub struct GrpcConfig {
 
 /// unix管道通信相关配置
 ///
-/// 注：仅在unix系统上支持
+/// 注: 仅在unix系统上支持
 #[derive(Deserialize, Serialize, Clone)]
 #[cfg(unix)]
 pub struct PipeConfig {
@@ -95,14 +97,13 @@ pub struct MulticastConfig {
     pub interval: u32,
 }
 
+/// 指令管理组件类型枚举
 #[derive(Deserialize, Serialize, Debug, Clone)]
 pub enum InstructManagerType {
     GrpcQdrant,
 }
 
-/// 子模块管理相关配置（核心配置）
-///
-/// 目前没有多少能正常配置的
+/// 指令管理组件配置
 #[derive(Deserialize, Serialize, Clone)]
 pub struct InstructManagerConfig {
     pub manager_type: InstructManagerType,
