@@ -18,6 +18,13 @@
 
 - `grpc_addr`: 核心模块连接子模块的地址，示例: `http://127.0.0.1:1234`
 
+### WindowsNamedPipe子模块
+
+子模块连接参数
+
+- `instruct_windows_named_pipe`: 核心模块向子模块发送指令的地址，示例: `\\.\pipe\nihilityer\submodule_name\instruct`
+- `manipulate_windows_named_pipe`: 核心模块向子模块发送操作的地址，示例: `\\.\pipe\nihilityer\submodule_name\manipulate`
+
 ## 开发中笔记
 
 `ort`需要需要设置`ORT_DYLIB_PATH`为`onnruntime`的lib文件路径：

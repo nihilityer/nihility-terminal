@@ -6,7 +6,7 @@ use color_eyre::{eyre::eyre, Result};
 use nihility_common::instruct::instruct_client::InstructClient;
 use nihility_common::manipulate::manipulate_client::ManipulateClient;
 use nihility_common::response_code::RespCode;
-use nihility_common::sub_module::{ModuleInfo, SubModuleType};
+use nihility_common::submodule::{SubmoduleReq, SubmoduleType};
 use tonic::transport::Channel;
 
 #[cfg(unix)]
@@ -19,7 +19,12 @@ use crate::communicat::{SendInstructOperate, SendManipulateOperate};
 use crate::entity::instruct::InstructEntity;
 use crate::entity::manipulate::ManipulateEntity;
 
+const GRPC_CONN_ADDR_FIELD: &str = "grpc_addr";
+const INSTRUCT_WINDOWS_NAMED_PIPE_FIELD: &str = "instruct_windows_named_pipe";
+const MANIPULATE_WINDOWS_NAMED_PIPE_FIELD: &str = "manipulate_windows_named_pipe";
+
 /// 操作子模块类型
+#[derive(Debug)]
 pub enum OperateType {
     /// 注册当前模块
     REGISTER,
@@ -32,11 +37,12 @@ pub enum OperateType {
 }
 
 /// 操作子模块消息结构体
+#[derive(Debug)]
 pub struct ModuleOperate {
     pub name: String,
     pub default_instruct: Vec<String>,
-    pub sub_module_type: SubModuleType,
-    pub addr: Vec<String>,
+    pub submodule_type: SubmoduleType,
+    pub conn_params: HashMap<String, String>,
     pub operate_type: OperateType,
 }
 
@@ -44,7 +50,7 @@ pub struct ModuleOperate {
 pub struct Submodule {
     pub name: String,
     pub default_instruct_map: HashMap<String, String>,
-    pub sub_module_type: SubModuleType,
+    pub sub_module_type: SubmoduleType,
     pub heartbeat_time: u64,
     instruct_client: Box<dyn SendInstructOperate + Send>,
     manipulate_client: Box<dyn SendManipulateOperate + Send>,
@@ -52,13 +58,13 @@ pub struct Submodule {
 
 impl ModuleOperate {
     /// 通过应用间消息创建操作子模块消息结构体，由调用的方法决定结构体类型
-    pub fn create_by_req(req: ModuleInfo, operate_type: OperateType) -> Result<Self> {
-        if let Some(sub_module_type) = SubModuleType::from_i32(req.sub_module_type) {
+    pub fn create_by_req(req: SubmoduleReq, operate_type: OperateType) -> Result<Self> {
+        if let Some(submodule_type) = SubmoduleType::from_i32(req.submodule_type) {
             Ok(ModuleOperate {
                 name: req.name,
                 default_instruct: req.default_instruct,
-                sub_module_type,
-                addr: req.addr,
+                submodule_type,
+                conn_params: req.conn_params,
                 operate_type,
             })
         } else {
@@ -77,8 +83,8 @@ impl ModuleOperate {
         Ok(ModuleOperate {
             name: submodule.name.to_string(),
             default_instruct,
-            sub_module_type: submodule.sub_module_type.clone(),
-            addr: Vec::new(),
+            submodule_type: submodule.sub_module_type.clone(),
+            conn_params: HashMap::<String, String>::new(),
             operate_type,
         })
     }
@@ -87,15 +93,15 @@ impl ModuleOperate {
 impl Submodule {
     /// 统一实现由注册消息创建Module
     pub async fn create_by_operate(operate: ModuleOperate) -> Result<Self> {
-        return match operate.sub_module_type {
-            SubModuleType::GrpcType => Ok(Self::create_grpc_module(operate).await?),
-            SubModuleType::PipeType => {
+        return match operate.submodule_type {
+            SubmoduleType::GrpcType => Ok(Self::create_grpc_module(operate).await?),
+            SubmoduleType::PipeType => {
                 #[cfg(unix)]
                 return Ok(Self::create_pipe_module(operate)?);
                 #[cfg(windows)]
                 return Err(eyre!("This OS cannot create PipeType Submodule"));
             }
-            SubModuleType::WindowsNamedPipeType => {
+            SubmoduleType::WindowsNamedPipeType => {
                 #[cfg(unix)]
                 return Err(eyre!(
                     "This OS cannot create WindowsNamedPipeType Submodule"
@@ -110,8 +116,8 @@ impl Submodule {
     #[cfg(unix)]
     fn create_pipe_module(operate: ModuleOperate) -> Result<Submodule> {
         tracing::debug!("start create pipe model");
-        let instruct_path = operate.addr[0].to_string();
-        let manipulate_path = operate.addr[1].to_string();
+        let instruct_path = operate.conn_params[0].to_string();
+        let manipulate_path = operate.conn_params[1].to_string();
         let instruct_client = Box::new(PipeUnixInstructClient::init(instruct_path)?);
         let manipulate_client = Box::new(PipeUnixManipulateClient::init(manipulate_path)?);
         let mut instruct_map = HashMap::<String, String>::new();
@@ -124,7 +130,7 @@ impl Submodule {
             name: operate.name,
             default_instruct: operate.default_instruct.into(),
             instruct_points_id: Vec::<String>::new(),
-            sub_module_type: operate.sub_module_type,
+            sub_module_type: operate.submodule_type,
             heartbeat_time: timestamp,
             instruct_client,
             manipulate_client,
@@ -135,10 +141,34 @@ impl Submodule {
     #[cfg(windows)]
     fn create_windows_named_pipe_module(operate: ModuleOperate) -> Result<Submodule> {
         tracing::debug!("start create pipe model");
-        let instruct_path = operate.addr[0].to_string();
-        let manipulate_path = operate.addr[1].to_string();
-        let instruct_client = Box::new(WindowsNamedPipeInstructClient::init(instruct_path)?);
-        let manipulate_client = Box::new(WindowsNamedPipeManipulateClient::init(manipulate_path)?);
+        if let None = operate.conn_params.get(INSTRUCT_WINDOWS_NAMED_PIPE_FIELD) {
+            return Err(eyre!(
+                "create {:?} type Submodule Error, ModuleOperate not have {:?} filed",
+                &operate.submodule_type,
+                INSTRUCT_WINDOWS_NAMED_PIPE_FIELD
+            ));
+        }
+        if let None = operate.conn_params.get(MANIPULATE_WINDOWS_NAMED_PIPE_FIELD) {
+            return Err(eyre!(
+                "create {:?} type Submodule Error, ModuleOperate not have {:?} filed",
+                &operate.submodule_type,
+                MANIPULATE_WINDOWS_NAMED_PIPE_FIELD
+            ));
+        }
+        let instruct_path = operate
+            .conn_params
+            .get(INSTRUCT_WINDOWS_NAMED_PIPE_FIELD)
+            .unwrap();
+        let manipulate_path = operate
+            .conn_params
+            .get(MANIPULATE_WINDOWS_NAMED_PIPE_FIELD)
+            .unwrap();
+        let instruct_client = Box::new(WindowsNamedPipeInstructClient::init(
+            instruct_path.to_string(),
+        )?);
+        let manipulate_client = Box::new(WindowsNamedPipeManipulateClient::init(
+            manipulate_path.to_string(),
+        )?);
         let mut instruct_map = HashMap::<String, String>::new();
         for instruct in operate.default_instruct {
             instruct_map.insert(instruct, String::new());
@@ -148,7 +178,7 @@ impl Submodule {
         Ok(Submodule {
             name: operate.name,
             default_instruct_map: instruct_map,
-            sub_module_type: operate.sub_module_type,
+            sub_module_type: operate.submodule_type,
             heartbeat_time: timestamp,
             instruct_client,
             manipulate_client,
@@ -156,9 +186,18 @@ impl Submodule {
     }
 
     /// 创建grpc通信的子模块
+    ///
+    /// 连接参数需要具有`grpc_addr`参数
     async fn create_grpc_module(operate: ModuleOperate) -> Result<Submodule> {
-        tracing::debug!("start create grpc model");
-        let grpc_addr = operate.addr[0].to_string();
+        tracing::debug!("start create grpc submodule by {:?}", &operate);
+        if let None = operate.conn_params.get(GRPC_CONN_ADDR_FIELD) {
+            return Err(eyre!(
+                "create {:?} type Submodule Error, ModuleOperate not have {:?} filed",
+                &operate.submodule_type,
+                GRPC_CONN_ADDR_FIELD
+            ));
+        }
+        let grpc_addr = operate.conn_params.get(GRPC_CONN_ADDR_FIELD).unwrap();
         let instruct_client: Box<InstructClient<Channel>> =
             Box::new(InstructClient::connect(grpc_addr.to_string()).await?);
         let manipulate_client: Box<ManipulateClient<Channel>> =
@@ -172,7 +211,7 @@ impl Submodule {
         Ok(Submodule {
             name: operate.name,
             default_instruct_map: instruct_map,
-            sub_module_type: operate.sub_module_type,
+            sub_module_type: operate.submodule_type,
             heartbeat_time: timestamp,
             instruct_client,
             manipulate_client,

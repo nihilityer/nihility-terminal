@@ -7,8 +7,8 @@ use nihility_common::manipulate::manipulate_client::ManipulateClient;
 use nihility_common::manipulate::manipulate_server::{Manipulate, ManipulateServer};
 use nihility_common::manipulate::{ManipulateReq, ManipulateResp};
 use nihility_common::response_code::RespCode;
-use nihility_common::sub_module::sub_module_server::{SubModule, SubModuleServer};
-use nihility_common::sub_module::{ModuleInfo, SubModuleResp};
+use nihility_common::submodule::submodule_server::{Submodule, SubmoduleServer};
+use nihility_common::submodule::{SubModuleResp, SubmoduleReq};
 use tokio::sync::mpsc::Sender;
 use tonic::transport::{Channel, Server};
 use tonic::{Request, Response, Status};
@@ -37,7 +37,7 @@ impl GrpcServer {
             tracing::info!("Grpc Server bind at {}", &bind_addr);
 
             Server::builder()
-                .add_service(SubModuleServer::new(SubModuleImpl::init(
+                .add_service(SubmoduleServer::new(SubmoduleImpl::init(
                     operate_module_sender,
                 )))
                 .add_service(InstructServer::new(InstructImpl::init(instruct_sender)))
@@ -88,7 +88,7 @@ impl SendManipulateOperate for ManipulateClient<Channel> {
     }
 }
 
-pub struct SubModuleImpl {
+pub struct SubmoduleImpl {
     operate_module_sender: Sender<ModuleOperate>,
 }
 
@@ -101,10 +101,10 @@ pub struct ManipulateImpl {
 }
 
 #[tonic::async_trait]
-impl SubModule for SubModuleImpl {
+impl Submodule for SubmoduleImpl {
     async fn register(
         &self,
-        request: Request<ModuleInfo>,
+        request: Request<SubmoduleReq>,
     ) -> Result<Response<SubModuleResp>, Status> {
         let module =
             ModuleOperate::create_by_req(request.into_inner(), OperateType::REGISTER).unwrap();
@@ -118,7 +118,7 @@ impl SubModule for SubModuleImpl {
 
     async fn offline(
         &self,
-        request: Request<ModuleInfo>,
+        request: Request<SubmoduleReq>,
     ) -> Result<Response<SubModuleResp>, Status> {
         let module =
             ModuleOperate::create_by_req(request.into_inner(), OperateType::OFFLINE).unwrap();
@@ -132,11 +132,25 @@ impl SubModule for SubModuleImpl {
 
     async fn keep_alive(
         &self,
-        request: Request<ModuleInfo>,
+        request: Request<SubmoduleReq>,
     ) -> Result<Response<SubModuleResp>, Status> {
         let module =
             ModuleOperate::create_by_req(request.into_inner(), OperateType::HEARTBEAT).unwrap();
         tracing::info!("get model:{} heartbeat", &module.name);
+        self.operate_module_sender.send(module).await.unwrap();
+        Ok(Response::new(SubModuleResp {
+            success: true,
+            resp_code: RespCode::Success.into(),
+        }))
+    }
+
+    async fn update(
+        &self,
+        request: Request<SubmoduleReq>,
+    ) -> std::result::Result<Response<SubModuleResp>, Status> {
+        let module =
+            ModuleOperate::create_by_req(request.into_inner(), OperateType::UPDATE).unwrap();
+        tracing::info!("get model:{} update info", &module.name);
         self.operate_module_sender.send(module).await.unwrap();
         Ok(Response::new(SubModuleResp {
             success: true,
@@ -177,9 +191,9 @@ impl Manipulate for ManipulateImpl {
     }
 }
 
-impl SubModuleImpl {
+impl SubmoduleImpl {
     pub fn init(operate_module_sender: Sender<ModuleOperate>) -> Self {
-        SubModuleImpl {
+        SubmoduleImpl {
             operate_module_sender,
         }
     }

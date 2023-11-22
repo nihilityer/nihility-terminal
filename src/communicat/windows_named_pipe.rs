@@ -5,7 +5,7 @@ use color_eyre::{eyre::eyre, Result};
 use nihility_common::instruct::{InstructReq, InstructResp};
 use nihility_common::manipulate::{ManipulateReq, ManipulateResp};
 use nihility_common::response_code::RespCode;
-use nihility_common::sub_module::ModuleInfo;
+use nihility_common::submodule::SubmoduleReq;
 use prost::Message;
 use tokio::net::windows::named_pipe::{ClientOptions, NamedPipeClient};
 use tokio::net::windows::named_pipe::{NamedPipeServer, ServerOptions};
@@ -76,7 +76,7 @@ impl WindowsNamedPipeProcessor {
                     return Err(eyre!("module_named_pipe_processor read 0 size"));
                 }
                 Ok(n) => {
-                    let result: ModuleInfo = ModuleInfo::decode(&data[..n])?;
+                    let result: SubmoduleReq = SubmoduleReq::decode(&data[..n])?;
                     tracing::debug!("named pipe model name:{:?}", &result.name);
                     let module_operate =
                         ModuleOperate::create_by_req(result, OperateType::REGISTER)?;
