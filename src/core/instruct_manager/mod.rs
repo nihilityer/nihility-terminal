@@ -2,7 +2,8 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use color_eyre::Result;
+use anyhow::Result;
+use tracing::info;
 
 use crate::config::{InstructManagerConfig, InstructManagerType};
 
@@ -37,7 +38,7 @@ pub trait InstructManager {
 pub async fn build_instruct_manager(
     config: InstructManagerConfig,
 ) -> Result<Arc<tokio::sync::Mutex<Box<dyn InstructManager + Send>>>> {
-    tracing::info!("Module Manager Type: {:?}", &config.manager_type);
+    info!("Module Manager Type: {:?}", &config.manager_type);
     match config.manager_type {
         InstructManagerType::GrpcQdrant => {
             let instruct_manager = grpc_qdrant::GrpcQdrant::init(config.config_map.clone()).await?;

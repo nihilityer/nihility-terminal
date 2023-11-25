@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use color_eyre::{eyre::eyre, Result};
+use anyhow::{anyhow, Result};
 use nihility_common::instruct::instruct_client::InstructClient;
 use nihility_common::manipulate::manipulate_client::ManipulateClient;
 use nihility_common::response_code::RespCode;
@@ -95,18 +95,18 @@ impl Submodule {
                 #[cfg(unix)]
                 return Ok(Self::create_pipe_module(operate)?);
                 #[cfg(windows)]
-                return Err(eyre!("This OS cannot create PipeType Submodule"));
+                return Err(anyhow!("This OS cannot create PipeType Submodule"));
             }
             SubmoduleType::WindowsNamedPipeType => {
                 #[cfg(unix)]
-                return Err(eyre!(
+                return Err(anyhow!(
                     "This OS cannot create WindowsNamedPipeType Submodule"
                 ));
                 #[cfg(windows)]
                 return Ok(Self::create_windows_named_pipe_module(operate)?);
             }
             SubmoduleType::HttpType => {
-                return Err(eyre!("This Submodule Type Not Support Yet"));
+                return Err(anyhow!("This Submodule Type Not Support Yet"));
             }
         };
     }
@@ -141,14 +141,14 @@ impl Submodule {
     fn create_windows_named_pipe_module(operate: ModuleOperate) -> Result<Submodule> {
         debug!("start create pipe model");
         if let None = operate.conn_params.get(INSTRUCT_WINDOWS_NAMED_PIPE_FIELD) {
-            return Err(eyre!(
+            return Err(anyhow!(
                 "create {:?} type Submodule Error, ModuleOperate not have {:?} filed",
                 &operate.submodule_type,
                 INSTRUCT_WINDOWS_NAMED_PIPE_FIELD
             ));
         }
         if let None = operate.conn_params.get(MANIPULATE_WINDOWS_NAMED_PIPE_FIELD) {
-            return Err(eyre!(
+            return Err(anyhow!(
                 "create {:?} type Submodule Error, ModuleOperate not have {:?} filed",
                 &operate.submodule_type,
                 MANIPULATE_WINDOWS_NAMED_PIPE_FIELD
@@ -190,7 +190,7 @@ impl Submodule {
     async fn create_grpc_module(operate: ModuleOperate) -> Result<Submodule> {
         debug!("start create grpc submodule by {:?}", &operate);
         if let None = operate.conn_params.get(GRPC_CONN_ADDR_FIELD) {
-            return Err(eyre!(
+            return Err(anyhow!(
                 "create {:?} type Submodule Error, ModuleOperate not have {:?} filed",
                 &operate.submodule_type,
                 GRPC_CONN_ADDR_FIELD

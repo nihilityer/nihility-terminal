@@ -3,7 +3,7 @@ use std::fs::File;
 use std::io::Write;
 use std::path::Path;
 
-use color_eyre::Result;
+use anyhow::Result;
 use figment::providers::{Format, Json, Serialized, Toml, Yaml};
 use figment::Figment;
 use local_ip_address::local_ip;

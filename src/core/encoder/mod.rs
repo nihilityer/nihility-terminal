@@ -1,7 +1,8 @@
 use std::sync::Arc;
 use std::sync::Mutex;
 
-use color_eyre::Result;
+use anyhow::Result;
+use tracing::info;
 
 use crate::config::{EncoderConfig, EncoderType};
 
@@ -24,7 +25,7 @@ pub trait Encoder {
 pub fn encoder_builder(
     encoder_config: &EncoderConfig,
 ) -> Result<Arc<Mutex<Box<dyn Encoder + Send>>>> {
-    tracing::info!("use encoder type: {:?}", &encoder_config.encoder_type);
+    info!("use encoder type: {:?}", &encoder_config.encoder_type);
     return match encoder_config.encoder_type {
         EncoderType::SentenceTransformers => {
             let encoder = sentence_transformers::SentenceTransformers::init(

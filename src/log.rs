@@ -1,4 +1,4 @@
-use color_eyre::{eyre::eyre, Result};
+use anyhow::{anyhow, Result};
 use time::macros::format_description;
 use time::UtcOffset;
 use tracing::Level;
@@ -30,7 +30,7 @@ impl Log {
                 subscriber = subscriber.with_max_level(Level::ERROR);
             }
             other => {
-                return Err(eyre!(
+                return Err(anyhow!(
                     "Log Module Config Error : Level {other} is not support"
                 ));
             }

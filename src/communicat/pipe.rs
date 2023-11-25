@@ -1,5 +1,6 @@
 use async_trait::async_trait;
-use color_eyre::{eyre::eyre, Result};
+use anyhow::{anyhow, Result};
+use tracing::{debug, info};
 use nihility_common::module_info::ModuleInfoReq;
 
 #[cfg(unix)]
@@ -16,11 +17,11 @@ impl PipeProcessor {
         if !pipe_config.enable {
             return Ok(());
         }
-        tracing::debug!("PipeProcessor start!");
+        debug!("PipeProcessor start!");
         if !Path::try_exists(&pipe_config.unix.directory.as_ref())? {
             fs::create_dir_all(&pipe_config.unix.directory)?;
         }
-        tracing::debug!("pipe work dir: {}", &pipe_config.unix.directory);
+        debug!("pipe work dir: {}", &pipe_config.unix.directory);
 
         let module_path = format!(
             "{}/{}",
@@ -39,34 +40,34 @@ impl PipeProcessor {
         );
 
         if !Path::try_exists(&module_path.as_ref())? {
-            tracing::debug!(
+            debug!(
                 "cannot found model pipe file, try create on {}",
                 &module_path
             );
             Command::new("mkfifo").arg(&module_path).output()?;
         }
         if !Path::try_exists(&instruct_path.as_ref())? {
-            tracing::debug!(
+            debug!(
                 "cannot found instruct pipe receiver file, try create on {}",
                 &instruct_path
             );
             Command::new("mkfifo").arg(&instruct_path).output()?;
         }
         if !Path::try_exists(&manipulate_path.as_ref())? {
-            tracing::debug!(
+            debug!(
                 "cannot found manipulate pipe receiver file, try create on {}",
                 &manipulate_path
             );
             Command::new("mkfifo").arg(&manipulate_path).output()?;
         }
 
-        tracing::debug!("start create pipe from file");
+        debug!("start create pipe from file");
         let module_rx = OpenOptions::new().open_receiver(&module_path)?;
-        tracing::debug!("model pipe create success");
+        debug!("model pipe create success");
         let instruct_rx = OpenOptions::new().open_receiver(&instruct_path)?;
-        tracing::debug!("instruct pipe create success");
+        debug!("instruct pipe create success");
         let manipulate_rx = OpenOptions::new().open_receiver(&manipulate_path)?;
-        tracing::debug!("manipulate pipe create success");
+        debug!("manipulate pipe create success");
 
         loop {
             Self::module_pipe_processor(&module_sender, &module_rx).await?;
@@ -87,7 +88,7 @@ impl PipeProcessor {
             Ok(n) => {
                 if n > 0 {
                     let result: ModuleInfoReq = ModuleInfoReq::decode(&msg[..n])?;
-                    tracing::debug!("pipe model name:{:?}", &result.name);
+                    debug!("pipe model name:{:?}", &result.name);
                     let model = Submodule::create_by_req(result).await?;
                     module_sender.send(model).await?;
                 }
@@ -113,7 +114,7 @@ impl PipeProcessor {
                 if n > 0 {
                     let result: InstructReq = InstructReq::decode(&data[..n])?;
                     let instruct_entity = InstructEntity::create_by_req(result);
-                    tracing::debug!("pipe instruct: {:?}", &instruct_entity);
+                    debug!("pipe instruct: {:?}", &instruct_entity);
                     instruct_sender.send(instruct_entity).await?;
                 }
             }
@@ -138,7 +139,7 @@ impl PipeProcessor {
                 if n > 0 {
                     let result: ManipulateReq = ManipulateReq::decode(&data[..n])?;
                     let manipulate_entity = ManipulateEntity::create_by_req(result);
-                    tracing::debug!("pipe manipulate: {:?}", &manipulate_entity);
+                    debug!("pipe manipulate: {:?}", &manipulate_entity);
                     manipulate_sender.send(manipulate_entity).await?;
                 }
             }
@@ -182,7 +183,7 @@ pub struct PipeUnixManipulateClient {
 #[cfg(unix)]
 impl PipeUnixInstructClient {
     pub fn init(path: String) -> Result<Self> {
-        tracing::debug!("open instruct pipe sender from {}", &path);
+        debug!("open instruct pipe sender from {}", &path);
         let sender = OpenOptions::new().open_sender(path)?;
         Ok(PipeUnixInstructClient {
             instruct_sender: sender,
@@ -215,7 +216,7 @@ impl PipeUnixInstructClient {
 #[cfg(unix)]
 impl PipeUnixManipulateClient {
     pub fn init(path: String) -> Result<Self> {
-        tracing::debug!("open manipulate pipe sender from {}", &path);
+        debug!("open manipulate pipe sender from {}", &path);
         let sender = OpenOptions::new().open_sender(path)?;
         Ok(PipeUnixManipulateClient {
             manipulate_sender: sender,

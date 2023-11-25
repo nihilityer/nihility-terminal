@@ -1,7 +1,7 @@
 use std::io;
 
+use anyhow::{anyhow, Result};
 use async_trait::async_trait;
-use color_eyre::{eyre::eyre, Result};
 use nihility_common::instruct::{InstructReq, InstructResp};
 use nihility_common::manipulate::{ManipulateReq, ManipulateResp};
 use nihility_common::response_code::RespCode;
@@ -10,6 +10,7 @@ use prost::Message;
 use tokio::net::windows::named_pipe::{ClientOptions, NamedPipeClient};
 use tokio::net::windows::named_pipe::{NamedPipeServer, ServerOptions};
 use tokio::sync::mpsc::Sender;
+use tracing::{debug, info};
 
 use crate::communicat::{SendInstructOperate, SendManipulateOperate};
 use crate::config::WindowsNamedPipesConfig;
@@ -31,7 +32,7 @@ impl WindowsNamedPipeProcessor {
         if !windows_named_pipe_config.enable {
             return Ok(());
         }
-        tracing::info!("WindowsNamedPipeProcessor start");
+        info!("WindowsNamedPipeProcessor start");
         let module_pipe_name = format!(
             r"{}\{}",
             &windows_named_pipe_config.pipe_prefix, &windows_named_pipe_config.module_pipe_name
@@ -73,11 +74,11 @@ impl WindowsNamedPipeProcessor {
 
             match module_server.try_read(&mut data) {
                 Ok(0) => {
-                    return Err(eyre!("module_named_pipe_processor read 0 size"));
+                    return Err(anyhow!("module_named_pipe_processor read 0 size"));
                 }
                 Ok(n) => {
                     let result: SubmoduleReq = SubmoduleReq::decode(&data[..n])?;
-                    tracing::debug!("named pipe model name:{:?}", &result.name);
+                    debug!("named pipe model name:{:?}", &result.name);
                     let module_operate =
                         ModuleOperate::create_by_req(result, OperateType::REGISTER)?;
                     module_operate_sender.send(module_operate).await?;
@@ -100,11 +101,11 @@ impl WindowsNamedPipeProcessor {
 
             match instruct_server.try_read(&mut data) {
                 Ok(0) => {
-                    return Err(eyre!("instruct_named_pipe_processor read 0 size"));
+                    return Err(anyhow!("instruct_named_pipe_processor read 0 size"));
                 }
                 Ok(n) => {
                     let result: InstructReq = InstructReq::decode(&data[..n])?;
-                    tracing::debug!("named pipe instruct name:{:?}", &result);
+                    debug!("named pipe instruct name:{:?}", &result);
                     let instruct = InstructEntity::create_by_req(result);
                     instruct_sender.send(instruct).await?;
                 }
@@ -126,11 +127,11 @@ impl WindowsNamedPipeProcessor {
 
             match manipulate_server.try_read(&mut data) {
                 Ok(0) => {
-                    return Err(eyre!("instruct_named_pipe_processor read 0 size"));
+                    return Err(anyhow!("instruct_named_pipe_processor read 0 size"));
                 }
                 Ok(n) => {
                     let result: ManipulateReq = ManipulateReq::decode(&data[..n])?;
-                    tracing::debug!("named pipe manipulate name:{:?}", &result);
+                    debug!("named pipe manipulate name:{:?}", &result);
                     let manipulate = ManipulateEntity::create_by_req(result);
                     manipulate_sender.send(manipulate).await?;
                 }
@@ -172,7 +173,7 @@ pub struct WindowsNamedPipeManipulateClient {
 #[cfg(windows)]
 impl WindowsNamedPipeInstructClient {
     pub fn init(path: String) -> Result<Self> {
-        tracing::debug!("open instruct pipe sender from {}", &path);
+        debug!("open instruct pipe sender from {}", &path);
         let sender = ClientOptions::new().open(path)?;
         Ok(WindowsNamedPipeInstructClient {
             instruct_sender: sender,
@@ -208,7 +209,7 @@ impl WindowsNamedPipeInstructClient {
 #[cfg(windows)]
 impl WindowsNamedPipeManipulateClient {
     pub fn init(path: String) -> Result<Self> {
-        tracing::debug!("open manipulate pipe sender from {}", &path);
+        debug!("open manipulate pipe sender from {}", &path);
         let sender = ClientOptions::new().open(path)?;
         Ok(WindowsNamedPipeManipulateClient {
             manipulate_sender: sender,

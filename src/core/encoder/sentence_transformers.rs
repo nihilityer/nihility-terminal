@@ -1,10 +1,11 @@
 use std::ops::Deref;
 
-use color_eyre::{eyre::eyre, Result};
+use anyhow::{anyhow, Result};
 use ndarray::{Array1, Axis, CowArray};
 use ort::tensor::OrtOwnedTensor;
 use ort::{Environment, ExecutionProvider, GraphOptimizationLevel, Session, SessionBuilder, Value};
 use tokenizers::Tokenizer;
+use tracing::debug;
 
 use crate::core::encoder::Encoder;
 
@@ -22,8 +23,8 @@ impl Encoder for SentenceTransformers {
     {
         let onnx_model_path = format!("{}/{}/model.onnx", model_path, model_name);
         let tokenizers_config_path = format!("{}/{}/tokenizer.json", model_path, model_name);
-        tracing::debug!("onnx_model_path:{}", &onnx_model_path);
-        tracing::debug!("tokenizers_config_path:{}", &tokenizers_config_path);
+        debug!("onnx_model_path:{}", &onnx_model_path);
+        debug!("tokenizers_config_path:{}", &tokenizers_config_path);
         let environment = Environment::builder()
             .with_name("SentenceTransformers")
             .with_execution_providers([ExecutionProvider::CPU(Default::default())])
@@ -44,7 +45,7 @@ impl Encoder for SentenceTransformers {
 
     fn encode(&mut self, input: String) -> Result<Vec<f32>> {
         let encoding = self.tokenizer.encode(input, false).unwrap();
-        tracing::debug!("encoding: {:?}", &encoding);
+        debug!("encoding: {:?}", &encoding);
 
         let ids = encoding
             .get_ids()
@@ -93,7 +94,7 @@ impl Encoder for SentenceTransformers {
             Value::from_array(self.ort_session.allocator(), &token_type_ids)?,
             Value::from_array(self.ort_session.allocator(), &attention_mask)?,
         ];
-        tracing::debug!("onnx inputs: {:?}", &inputs);
+        debug!("onnx inputs: {:?}", &inputs);
         let outputs: Vec<Value> = self.ort_session.run(inputs)?;
         let generated_tokens: OrtOwnedTensor<f32, _> = outputs[0].try_extract()?;
         let encode_result = generated_tokens.view();
@@ -101,10 +102,10 @@ impl Encoder for SentenceTransformers {
 
         if let Some(result) = encode_result.mean_axis(Axis(0)) {
             let result = result.iter().cloned().into_iter().collect::<Vec<f32>>();
-            tracing::debug!("encode result len:{:?}", result.len());
+            debug!("encode result len:{:?}", result.len());
             return Ok(result);
         } else {
-            return Err(eyre!("Encode Result Transform Error"));
+            return Err(anyhow!("Encode Result Transform Error"));
         }
     }
 

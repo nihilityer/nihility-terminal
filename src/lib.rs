@@ -1,7 +1,8 @@
 extern crate nihility_common;
 
-use color_eyre::Result;
+use anyhow::Result;
 use tokio::sync::mpsc;
+use tokio::try_join;
 
 use crate::config::SummaryConfig;
 use crate::entity::instruct::InstructEntity;
@@ -44,7 +45,7 @@ impl NihilityTerminal {
             manipulate_re,
         );
 
-        tokio::try_join!(communicat_future, core_future,)?;
+        try_join!(communicat_future, core_future,)?;
         Ok(())
     }
 }

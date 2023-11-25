@@ -2,9 +2,10 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use color_eyre::{eyre::eyre, Result};
+use anyhow::{anyhow, Result};
 use nihility_common::manipulate::ManipulateType;
 use tokio::sync::mpsc::{Receiver, Sender};
+use tokio::try_join;
 use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
@@ -61,7 +62,7 @@ pub async fn core_start(
 
     let manipulate_feature = manager_manipulate(module_map.clone(), manipulate_receiver);
 
-    tokio::try_join!(
+    try_join!(
         module_feature,
         heartbeat_feature,
         instruct_feature,
@@ -145,7 +146,7 @@ async fn manager_instruct(
         if let Ok(mut encoder) = instruct_encoder.lock() {
             encoded_instruct.append(encoder.encode(instruct.instruct.to_string())?.as_mut());
         } else {
-            return Err(eyre!("Lock Instruct Encoder Error"));
+            return Err(anyhow!("Lock Instruct Encoder Error"));
         }
 
         let locked_instruct_manager = qdrant_client.lock().await;
@@ -358,7 +359,7 @@ async fn register_submodule(
             Ok(mut locked_instruct_encoder) => {
                 debug!("lock locked_module_map, locked_instruct_encoder success");
                 if let Some(_) = locked_module_map.get(submodule.name.as_str()) {
-                    return Err(eyre!(
+                    return Err(anyhow!(
                         "The current submodule {:?} is registered",
                         &submodule.name
                     ));

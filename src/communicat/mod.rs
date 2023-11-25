@@ -1,9 +1,10 @@
+use anyhow::Result;
 use async_trait::async_trait;
-use color_eyre::Result;
 use nihility_common::instruct::InstructReq;
 use nihility_common::manipulate::ManipulateReq;
 use nihility_common::response_code::RespCode;
 use tokio::sync::mpsc::Sender;
+use tokio::try_join;
 
 use crate::communicat::grpc::GrpcServer;
 use crate::communicat::multicast::Multicast;
@@ -68,6 +69,6 @@ pub async fn communicat_module_start(
         manipulate_sender.clone(),
     );
 
-    tokio::try_join!(grpc_server_future, multicast_future, pipe_processor_future)?;
+    try_join!(grpc_server_future, multicast_future, pipe_processor_future)?;
     Ok(())
 }

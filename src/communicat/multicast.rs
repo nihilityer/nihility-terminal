@@ -1,9 +1,10 @@
 use std::net::Ipv4Addr;
 use std::str::FromStr;
 
-use color_eyre::Result;
+use anyhow::Result;
 use tokio::net::UdpSocket;
 use tokio::time::{self, Duration};
+use tracing::{debug, info};
 
 use crate::config::MulticastConfig;
 
@@ -12,10 +13,10 @@ pub struct Multicast;
 impl Multicast {
     pub async fn start(multicast_config: &MulticastConfig) -> Result<()> {
         if multicast_config.enable {
-            tracing::info!("Multicast start");
+            info!("Multicast start");
             let mut bind_addr = multicast_config.bind_addr.to_string();
             bind_addr.push_str(format!(":{}", multicast_config.bind_port).as_str());
-            tracing::debug!("bind udp_socket on: {}", &bind_addr);
+            debug!("bind udp_socket on: {}", &bind_addr);
             let udp_socket = UdpSocket::bind(bind_addr).await?;
 
             let group_addr = Ipv4Addr::from_str(multicast_config.multicast_group.as_str())?;
@@ -26,10 +27,9 @@ impl Multicast {
             multicast_addr.push_str(format!(":{}", multicast_config.multicast_port).as_str());
 
             loop {
-                tracing::debug!(
+                debug!(
                     "towards {} send {}",
-                    &multicast_addr,
-                    multicast_config.multicast_info
+                    &multicast_addr, multicast_config.multicast_info
                 );
                 udp_socket
                     .send_to(
