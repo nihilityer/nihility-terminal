@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use color_eyre::{eyre::eyre, Result};
+use color_eyre::Result;
 use nihility_common::instruct::instruct_client::InstructClient;
 use nihility_common::instruct::instruct_server::{Instruct, InstructServer};
 use nihility_common::instruct::{InstructReq, InstructResp};
@@ -55,36 +55,22 @@ impl GrpcServer {
 #[async_trait]
 impl SendInstructOperate for InstructClient<Channel> {
     async fn send(&mut self, instruct: InstructReq) -> Result<RespCode> {
-        let result = self
+        Ok(self
             .send_instruct(Request::new(instruct))
             .await?
-            .into_inner();
-        if let Some(resp_code) = RespCode::from_i32(result.resp_code) {
-            Ok(resp_code)
-        } else {
-            Err(eyre!(
-                "Cannot transform RespCode from resp_code: {:?}",
-                result.resp_code
-            ))
-        }
+            .into_inner()
+            .resp_code())
     }
 }
 
 #[async_trait]
 impl SendManipulateOperate for ManipulateClient<Channel> {
     async fn send(&mut self, manipulate: ManipulateReq) -> Result<RespCode> {
-        let result = self
+        Ok(self
             .send_manipulate(Request::new(manipulate))
             .await?
-            .into_inner();
-        if let Some(resp_code) = RespCode::from_i32(result.resp_code) {
-            Ok(resp_code)
-        } else {
-            Err(eyre!(
-                "Cannot transform RespCode from resp_code: {:?}",
-                result.resp_code
-            ))
-        }
+            .into_inner()
+            .resp_code())
     }
 }
 
@@ -122,7 +108,7 @@ impl Submodule for SubmoduleImpl {
     ) -> Result<Response<SubModuleResp>, Status> {
         let module =
             ModuleOperate::create_by_req(request.into_inner(), OperateType::OFFLINE).unwrap();
-        tracing::info!("start offline model:{}", &module.name);
+        tracing::info!("start offline model:{:?}", &module.name);
         self.operate_module_sender.send(module).await.unwrap();
         Ok(Response::new(SubModuleResp {
             success: true,
@@ -130,13 +116,13 @@ impl Submodule for SubmoduleImpl {
         }))
     }
 
-    async fn keep_alive(
+    async fn heartbeat(
         &self,
         request: Request<SubmoduleReq>,
-    ) -> Result<Response<SubModuleResp>, Status> {
+    ) -> std::result::Result<Response<SubModuleResp>, Status> {
         let module =
             ModuleOperate::create_by_req(request.into_inner(), OperateType::HEARTBEAT).unwrap();
-        tracing::info!("get model:{} heartbeat", &module.name);
+        tracing::info!("get model:{:?} heartbeat", &module.name);
         self.operate_module_sender.send(module).await.unwrap();
         Ok(Response::new(SubModuleResp {
             success: true,
@@ -150,7 +136,7 @@ impl Submodule for SubmoduleImpl {
     ) -> std::result::Result<Response<SubModuleResp>, Status> {
         let module =
             ModuleOperate::create_by_req(request.into_inner(), OperateType::UPDATE).unwrap();
-        tracing::info!("get model:{} update info", &module.name);
+        tracing::info!("get model:{:?} update info", &module.name);
         self.operate_module_sender.send(module).await.unwrap();
         Ok(Response::new(SubModuleResp {
             success: true,

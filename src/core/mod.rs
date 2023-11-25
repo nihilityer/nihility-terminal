@@ -5,6 +5,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use color_eyre::{eyre::eyre, Result};
 use nihility_common::manipulate::ManipulateType;
 use tokio::sync::mpsc::{Receiver, Sender};
+use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
 use crate::config::CoreConfig;
@@ -69,18 +70,21 @@ pub async fn core_start(
     Ok(())
 }
 
+/// 管理子模块的心跳，当有子模块心跳过期时
+///
+/// 通过`module_operate_sender`发送消息将对于子模块离线
 async fn manager_heartbeat(
     module_map: Arc<tokio::sync::Mutex<HashMap<String, Submodule>>>,
     module_operate_sender: Sender<ModuleOperate>,
 ) -> Result<()> {
     loop {
-        tracing::debug!("Make sure the module heartbeat is normal");
         tokio::time::sleep(Duration::from_secs(HEARTBEAT_TIME)).await;
+        debug!("Make sure the module heartbeat is normal");
         let mut locked_module_map = module_map.lock().await;
         let now_timestamp = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs();
         for (_, module) in locked_module_map.iter_mut() {
             if now_timestamp - module.heartbeat_time > 2 * HEARTBEAT_TIME {
-                tracing::info!("Submodule {:?} heartbeat exception", &module.name);
+                info!("Submodule {:?} heartbeat exception", &module.name);
                 let operate = ModuleOperate::create_by_submodule(&module, OperateType::OFFLINE)?;
                 module_operate_sender.send(operate).await?;
             }
@@ -99,12 +103,12 @@ async fn manager_manipulate(
     module_map: Arc<tokio::sync::Mutex<HashMap<String, Submodule>>>,
     mut manipulate_receiver: Receiver<ManipulateEntity>,
 ) -> Result<()> {
-    tracing::debug!("manipulate_receiver start recv");
+    debug!("manipulate_receiver start recv");
     while let Some(manipulate) = manipulate_receiver.recv().await {
-        tracing::info!("get manipulate：{:?}", &manipulate);
+        info!("get manipulate：{:?}", &manipulate);
         match manipulate.manipulate_type {
             ManipulateType::OfflineType => {
-                tracing::error!("Offline Type Manipulate Cannot Forward")
+                error!("Offline Type Manipulate Cannot Forward")
             }
             _ => {}
         }
@@ -112,7 +116,7 @@ async fn manager_manipulate(
         if let Some(module) = locked_module_map.get_mut(manipulate.use_module_name.as_str()) {
             module.send_manipulate(manipulate).await?;
         } else {
-            tracing::error!(
+            error!(
                 "use module name {:?} cannot find in register sub module",
                 manipulate.use_module_name.to_string()
             )
@@ -134,9 +138,9 @@ async fn manager_instruct(
     instruct_encoder: Arc<Mutex<Box<dyn Encoder + Send>>>,
     mut instruct_receiver: Receiver<InstructEntity>,
 ) -> Result<()> {
-    tracing::debug!("instruct_receiver start recv");
+    debug!("instruct_receiver start recv");
     while let Some(instruct) = instruct_receiver.recv().await {
-        tracing::info!("get instruct：{:?}", &instruct);
+        info!("get instruct：{:?}", &instruct);
         let mut encoded_instruct: Vec<f32> = Vec::new();
         if let Ok(mut encoder) = instruct_encoder.lock() {
             encoded_instruct.append(encoder.encode(instruct.instruct.to_string())?.as_mut());
@@ -145,14 +149,20 @@ async fn manager_instruct(
         }
 
         let locked_instruct_manager = qdrant_client.lock().await;
-        let module_name = locked_instruct_manager.search(encoded_instruct).await?;
-        drop(locked_instruct_manager);
+        match locked_instruct_manager.search(encoded_instruct).await {
+            Ok(module_name) => {
+                drop(locked_instruct_manager);
 
-        let mut modules = module_map.lock().await;
-        if let Some(module) = modules.get_mut(module_name.as_str()) {
-            let send_resp = module.send_instruct(instruct).await?;
-            tracing::debug!("send_instruct result: {:?}", send_resp);
-            continue;
+                let mut modules = module_map.lock().await;
+                if let Some(module) = modules.get_mut(module_name.as_str()) {
+                    let send_resp = module.send_instruct(instruct).await?;
+                    debug!("send_instruct result: {:?}", send_resp);
+                    continue;
+                }
+            }
+            Err(e) => {
+                warn!("{}", e.to_string());
+            }
         }
     }
     Ok(())
@@ -169,18 +179,25 @@ async fn manager_module(
     instruct_encoder: Arc<Mutex<Box<dyn Encoder + Send>>>,
     mut module_operate_receiver: Receiver<ModuleOperate>,
 ) -> Result<()> {
-    tracing::debug!("module_receiver start recv");
+    debug!("module_receiver start recv");
     while let Some(module_operate) = module_operate_receiver.recv().await {
         match module_operate.operate_type {
             OperateType::REGISTER => {
-                let module = Submodule::create_by_operate(module_operate).await?;
-                register_submodule(
+                match register_submodule(
                     module_map.clone(),
                     qdrant_client.clone(),
                     instruct_encoder.clone(),
-                    module,
+                    module_operate,
                 )
-                .await?;
+                .await
+                {
+                    Ok(register_submodule_name) => {
+                        info!("Register Submodule {:?} success", register_submodule_name);
+                    }
+                    Err(e) => {
+                        error!("{}", e)
+                    }
+                }
             }
             OperateType::OFFLINE => {
                 offline_submodule(module_map.clone(), qdrant_client.clone(), module_operate)
@@ -210,7 +227,7 @@ async fn update_submodule(
     instruct_encoder: Arc<Mutex<Box<dyn Encoder + Send>>>,
     module_operate: ModuleOperate,
 ) -> Result<()> {
-    tracing::info!(
+    info!(
         "Update Submodule {:?} Default Instruct",
         &module_operate.name
     );
@@ -292,7 +309,7 @@ async fn update_submodule_heartbeat(
     module_map: Arc<tokio::sync::Mutex<HashMap<String, Submodule>>>,
     module_operate: ModuleOperate,
 ) -> Result<()> {
-    tracing::debug!("Submodule {:?} Heartbeat", &module_operate.name);
+    debug!("Submodule {:?} Heartbeat", &module_operate.name);
     let mut locked_module_map = module_map.lock().await;
     if let Some(module) = locked_module_map.get_mut(module_operate.name.as_str()) {
         let timestamp = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs();
@@ -307,7 +324,7 @@ async fn offline_submodule(
     qdrant_client: Arc<tokio::sync::Mutex<Box<dyn InstructManager + Send>>>,
     module_operate: ModuleOperate,
 ) -> Result<()> {
-    tracing::info!("Offline Submodule {:?}", &module_operate.name);
+    info!("Offline Submodule {:?}", &module_operate.name);
     let mut point_ids = Vec::<String>::new();
     {
         let mut locked_module_map = module_map.lock().await;
@@ -328,28 +345,28 @@ async fn register_submodule(
     module_map: Arc<tokio::sync::Mutex<HashMap<String, Submodule>>>,
     qdrant_client: Arc<tokio::sync::Mutex<Box<dyn InstructManager + Send>>>,
     instruct_encoder: Arc<Mutex<Box<dyn Encoder + Send>>>,
-    mut module: Submodule,
-) -> Result<()> {
-    tracing::info!("start register model：{:?}", &module.name);
-    let tmp_module_name = module.name.to_string();
+    module_operate: ModuleOperate,
+) -> Result<String> {
+    info!("start register model：{:?}", &module_operate.name);
+    let register_submodule_name = module_operate.name.to_string();
+    let mut submodule = Submodule::create_by_operate(module_operate).await?;
     let mut points = Vec::<PointPayload>::new();
     // 此处操作需要同时获取两个锁，所以只有都获取时才进行操作，否则释放锁等待下次获取锁
     loop {
         let mut locked_module_map = module_map.lock().await;
         match instruct_encoder.try_lock() {
             Ok(mut locked_instruct_encoder) => {
-                tracing::debug!("lock locked_module_map, locked_instruct_encoder success");
-                if let Some(_) = locked_module_map.get(module.name.as_str()) {
-                    tracing::error!("The current submodule {:?} is registered", &module.name);
+                debug!("lock locked_module_map, locked_instruct_encoder success");
+                if let Some(_) = locked_module_map.get(submodule.name.as_str()) {
                     return Err(eyre!(
                         "The current submodule {:?} is registered",
-                        &module.name
+                        &submodule.name
                     ));
                 }
-                for (instruct, _) in module.default_instruct_map.clone() {
+                for (instruct, _) in submodule.default_instruct_map.clone() {
                     let encode_result = locked_instruct_encoder.encode(instruct.to_string())?;
                     let id = Uuid::new_v4();
-                    module
+                    submodule
                         .default_instruct_map
                         .insert(instruct.to_string(), id.to_string());
                     points.push(PointPayload {
@@ -358,7 +375,7 @@ async fn register_submodule(
                         uuid: id.to_string(),
                     });
                 }
-                locked_module_map.insert(module.name.to_string(), module);
+                locked_module_map.insert(submodule.name.to_string(), submodule);
                 break;
             }
             Err(_) => {
@@ -369,7 +386,7 @@ async fn register_submodule(
     }
     let locked_instruct_manager = qdrant_client.lock().await;
     locked_instruct_manager
-        .append_points(tmp_module_name, points)
+        .append_points(register_submodule_name.to_string(), points)
         .await?;
-    Ok(())
+    Ok(register_submodule_name)
 }

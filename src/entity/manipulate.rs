@@ -11,12 +11,8 @@ pub struct ManipulateEntity {
 impl ManipulateEntity {
     /// 通过外部请求实体创建内部操作实体
     pub fn create_by_req(req: ManipulateReq) -> Self {
-        let manipulate_type = match ManipulateType::from_i32(req.manipulate_type) {
-            Some(result) => result,
-            None => ManipulateType::DefaultType,
-        };
         ManipulateEntity {
-            manipulate_type,
+            manipulate_type: req.manipulate_type(),
             command: req.command,
             use_module_name: req.use_module_name,
         }

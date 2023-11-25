@@ -147,15 +147,7 @@ impl WindowsNamedPipeProcessor {
 #[async_trait]
 impl SendInstructOperate for WindowsNamedPipeInstructClient {
     async fn send(&mut self, instruct: InstructReq) -> Result<RespCode> {
-        let result = self.send_instruct(instruct).await?;
-        if let Some(resp_code) = RespCode::from_i32(result.resp_code) {
-            Ok(resp_code)
-        } else {
-            Err(eyre!(
-                "Cannot transform RespCode from resp_code: {:?}",
-                result.resp_code
-            ))
-        }
+        Ok(self.send_instruct(instruct).await?.resp_code())
     }
 }
 
@@ -163,15 +155,7 @@ impl SendInstructOperate for WindowsNamedPipeInstructClient {
 #[async_trait]
 impl SendManipulateOperate for WindowsNamedPipeManipulateClient {
     async fn send(&mut self, manipulate: ManipulateReq) -> Result<RespCode> {
-        let result = self.send_manipulate(manipulate).await?;
-        if let Some(resp_code) = RespCode::from_i32(result.resp_code) {
-            Ok(resp_code)
-        } else {
-            Err(eyre!(
-                "Cannot transform RespCode from resp_code: {:?}",
-                result.resp_code
-            ))
-        }
+        Ok(self.send_manipulate(manipulate).await?.resp_code())
     }
 }
 

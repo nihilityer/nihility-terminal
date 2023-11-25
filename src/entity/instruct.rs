@@ -10,12 +10,8 @@ pub struct InstructEntity {
 impl InstructEntity {
     /// 通过外部请求实体创建内部指令实体
     pub fn create_by_req(req: InstructReq) -> Self {
-        let instruct_type = match InstructType::from_i32(req.instruct_type) {
-            Some(result) => result,
-            None => InstructType::DefaultType,
-        };
         InstructEntity {
-            instruct_type,
+            instruct_type: req.instruct_type(),
             instruct: req.instruct,
         }
     }

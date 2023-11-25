@@ -1,4 +1,3 @@
-use std::borrow::Borrow;
 use std::collections::HashMap;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -8,6 +7,7 @@ use nihility_common::manipulate::manipulate_client::ManipulateClient;
 use nihility_common::response_code::RespCode;
 use nihility_common::submodule::{SubmoduleReq, SubmoduleType};
 use tonic::transport::Channel;
+use tracing::debug;
 
 #[cfg(unix)]
 use crate::communicat::pipe::{PipeUnixInstructClient, PipeUnixManipulateClient};
@@ -59,17 +59,13 @@ pub struct Submodule {
 impl ModuleOperate {
     /// 通过应用间消息创建操作子模块消息结构体，由调用的方法决定结构体类型
     pub fn create_by_req(req: SubmoduleReq, operate_type: OperateType) -> Result<Self> {
-        if let Some(submodule_type) = SubmoduleType::from_i32(req.submodule_type) {
-            Ok(ModuleOperate {
-                name: req.name,
-                default_instruct: req.default_instruct,
-                submodule_type,
-                conn_params: req.conn_params,
-                operate_type,
-            })
-        } else {
-            Err(eyre!("Cannot transform SubmoduleType from req: {:?}", req))
-        }
+        Ok(ModuleOperate {
+            name: req.name.clone(),
+            default_instruct: req.default_instruct.clone(),
+            submodule_type: req.clone().submodule_type(),
+            conn_params: req.conn_params.clone(),
+            operate_type,
+        })
     }
 
     /// 通过已创建子模块构建子模块操作，无法获取连接地址，当此时已不需要这个变量
@@ -109,13 +105,16 @@ impl Submodule {
                 #[cfg(windows)]
                 return Ok(Self::create_windows_named_pipe_module(operate)?);
             }
+            SubmoduleType::HttpType => {
+                return Err(eyre!("This Submodule Type Not Support Yet"));
+            }
         };
     }
 
     /// 创建pipe通信的子模块
     #[cfg(unix)]
     fn create_pipe_module(operate: ModuleOperate) -> Result<Submodule> {
-        tracing::debug!("start create pipe model");
+        debug!("start create pipe model");
         let instruct_path = operate.conn_params[0].to_string();
         let manipulate_path = operate.conn_params[1].to_string();
         let instruct_client = Box::new(PipeUnixInstructClient::init(instruct_path)?);
@@ -125,7 +124,7 @@ impl Submodule {
             instruct_map.insert(instruct, String::new());
         }
         let timestamp = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs();
-        tracing::debug!("create pipe model {} success", &req.name);
+        debug!("create pipe model {} success", &req.name);
         Ok(Submodule {
             name: operate.name,
             default_instruct: operate.default_instruct.into(),
@@ -140,7 +139,7 @@ impl Submodule {
     /// 创建WindowsNamedPipe通信的子模块
     #[cfg(windows)]
     fn create_windows_named_pipe_module(operate: ModuleOperate) -> Result<Submodule> {
-        tracing::debug!("start create pipe model");
+        debug!("start create pipe model");
         if let None = operate.conn_params.get(INSTRUCT_WINDOWS_NAMED_PIPE_FIELD) {
             return Err(eyre!(
                 "create {:?} type Submodule Error, ModuleOperate not have {:?} filed",
@@ -174,7 +173,7 @@ impl Submodule {
             instruct_map.insert(instruct, String::new());
         }
         let timestamp = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs();
-        tracing::debug!("create pipe model {} success", &operate.name);
+        debug!("create pipe model {} success", &operate.name);
         Ok(Submodule {
             name: operate.name,
             default_instruct_map: instruct_map,
@@ -189,7 +188,7 @@ impl Submodule {
     ///
     /// 连接参数需要具有`grpc_addr`参数
     async fn create_grpc_module(operate: ModuleOperate) -> Result<Submodule> {
-        tracing::debug!("start create grpc submodule by {:?}", &operate);
+        debug!("start create grpc submodule by {:?}", &operate);
         if let None = operate.conn_params.get(GRPC_CONN_ADDR_FIELD) {
             return Err(eyre!(
                 "create {:?} type Submodule Error, ModuleOperate not have {:?} filed",
@@ -207,7 +206,7 @@ impl Submodule {
             instruct_map.insert(instruct, String::new());
         }
         let timestamp = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs();
-        tracing::debug!("create grpc model {} success", &operate.name);
+        debug!("create grpc model {} success", &operate.name);
         Ok(Submodule {
             name: operate.name,
             default_instruct_map: instruct_map,
@@ -220,31 +219,32 @@ impl Submodule {
 
     /// 模块发送指令由此方法统一执行
     pub async fn send_instruct(&mut self, instruct: InstructEntity) -> Result<bool> {
-        tracing::debug!("send instruct client type:{:?}", self.sub_module_type);
-        let result = self.instruct_client.send(instruct.create_req()).await?;
-        if result.eq(RespCode::Success.borrow()) {
-            return Ok(true);
+        debug!("send instruct client type:{:?}", self.sub_module_type);
+        match self.instruct_client.send(instruct.create_req()).await? {
+            RespCode::Success => {
+                return Ok(true);
+            }
+            other_resp_code => {
+                debug!("{:?} send_instruct error: {:?}", self.name, other_resp_code);
+            }
         }
-        tracing::debug!(
-            "{:?} send_instruct error: {:?}",
-            self.name,
-            RespCode::from_i32(result.into())
-        );
         Ok(false)
     }
 
     /// 模块发送操作由此模块统一执行
     pub async fn send_manipulate(&mut self, manipulate: ManipulateEntity) -> Result<bool> {
-        tracing::debug!("send manipulate client type:{:?}", self.sub_module_type);
-        let result = self.manipulate_client.send(manipulate.create_req()).await?;
-        if result.eq(RespCode::Success.borrow()) {
-            return Ok(true);
+        debug!("send manipulate client type:{:?}", self.sub_module_type);
+        match self.manipulate_client.send(manipulate.create_req()).await? {
+            RespCode::Success => {
+                return Ok(true);
+            }
+            other_resp_code => {
+                debug!(
+                    "{:?} send_manipulate error: {:?}",
+                    self.name, other_resp_code
+                );
+            }
         }
-        tracing::debug!(
-            "{:?} send_manipulate error: {:?}",
-            self.name,
-            RespCode::from_i32(result.into())
-        );
         Ok(false)
     }
 }
