@@ -1,9 +1,8 @@
 use std::ops::Deref;
 
 use anyhow::{anyhow, Result};
-use ndarray::{Array1, Axis, CowArray};
-use ort::tensor::OrtOwnedTensor;
-use ort::{Environment, ExecutionProvider, GraphOptimizationLevel, Session, SessionBuilder, Value};
+use ndarray::{Array1, Axis};
+use ort::{inputs, CPUExecutionProvider, GraphOptimizationLevel, Session};
 use tokenizers::Tokenizer;
 use tracing::debug;
 
@@ -25,12 +24,10 @@ impl Encoder for SentenceTransformers {
         let tokenizers_config_path = format!("{}/{}/tokenizer.json", model_path, model_name);
         debug!("onnx_model_path:{}", &onnx_model_path);
         debug!("tokenizers_config_path:{}", &tokenizers_config_path);
-        let environment = Environment::builder()
-            .with_name("SentenceTransformers")
-            .with_execution_providers([ExecutionProvider::CPU(Default::default())])
-            .build()?
-            .into_arc();
-        let session = SessionBuilder::new(&environment)?
+        ort::init()
+            .with_execution_providers([CPUExecutionProvider::default().build()])
+            .commit()?;
+        let session = Session::builder()?
             .with_optimization_level(GraphOptimizationLevel::Level1)?
             .with_model_from_file(onnx_model_path)?;
 
@@ -47,56 +44,44 @@ impl Encoder for SentenceTransformers {
         let encoding = self.tokenizer.encode(input, false).unwrap();
         debug!("encoding: {:?}", &encoding);
 
-        let ids = encoding
-            .get_ids()
-            .iter()
-            .map(|i| *i as i64)
-            .collect::<Vec<_>>();
-        let ids = CowArray::from(Array1::from_iter(ids.iter().cloned()));
-        let n_ids = ids.shape()[0];
-        let input_ids = ids
-            .clone()
-            .insert_axis(Axis(0))
-            .into_shape((1, n_ids))
-            .unwrap()
-            .into_dyn();
+        let input_ids = Array1::from_iter(
+            encoding
+                .get_ids()
+                .iter()
+                .map(|i| *i as i64)
+                .collect::<Vec<_>>()
+                .into_iter(),
+        )
+        .insert_axis(Axis(0));
 
-        let type_ids = encoding
-            .get_type_ids()
-            .iter()
-            .map(|i| *i as i64)
-            .collect::<Vec<_>>();
-        let type_ids = CowArray::from(Array1::from_iter(type_ids.iter().cloned()));
-        let n_type_ids = type_ids.shape()[0];
-        let token_type_ids = type_ids
-            .clone()
-            .insert_axis(Axis(0))
-            .into_shape((1, n_type_ids))
-            .unwrap()
-            .into_dyn();
+        let token_type_ids = Array1::from_iter(
+            encoding
+                .get_type_ids()
+                .iter()
+                .map(|i| *i as i64)
+                .collect::<Vec<_>>()
+                .into_iter(),
+        )
+        .insert_axis(Axis(0));
 
-        let attention_mask = encoding
-            .get_attention_mask()
-            .iter()
-            .map(|i| *i as i64)
-            .collect::<Vec<_>>();
-        let attention_mask = CowArray::from(Array1::from_iter(attention_mask.iter().cloned()));
-        let n_attention_mask = attention_mask.shape()[0];
-        let attention_mask = attention_mask
-            .clone()
-            .insert_axis(Axis(0))
-            .into_shape((1, n_attention_mask))
-            .unwrap()
-            .into_dyn();
+        let attention_mask = Array1::from_iter(
+            encoding
+                .get_attention_mask()
+                .iter()
+                .map(|i| *i as i64)
+                .collect::<Vec<_>>()
+                .into_iter(),
+        )
+        .insert_axis(Axis(0));
 
-        let inputs = vec![
-            Value::from_array(self.ort_session.allocator(), &input_ids)?,
-            Value::from_array(self.ort_session.allocator(), &token_type_ids)?,
-            Value::from_array(self.ort_session.allocator(), &attention_mask)?,
-        ];
+        let inputs = inputs![
+            "input_ids" => input_ids,
+            "token_type_ids" => token_type_ids,
+            "attention_mask" => attention_mask,
+        ]?;
         debug!("onnx inputs: {:?}", &inputs);
-        let outputs: Vec<Value> = self.ort_session.run(inputs)?;
-        let generated_tokens: OrtOwnedTensor<f32, _> = outputs[0].try_extract()?;
+        let outputs = self.ort_session.run(inputs)?;
+        let generated_tokens = outputs[0].extract_tensor::<f32>()?;
         let encode_result = generated_tokens.view();
         let encode_result = encode_result.deref().index_axis(Axis(0), 0);
 
