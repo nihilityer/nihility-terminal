@@ -9,9 +9,10 @@ use nihility_common::submodule::SubmoduleReq;
 use prost::Message;
 use tokio::net::windows::named_pipe::{ClientOptions, NamedPipeClient};
 use tokio::net::windows::named_pipe::{NamedPipeServer, ServerOptions};
-use tokio::sync::mpsc::Sender;
-use tokio::try_join;
-use tracing::{debug, info};
+use tokio::spawn;
+use tokio::sync::mpsc::UnboundedSender;
+use tokio_util::sync::CancellationToken;
+use tracing::{debug, error, info};
 
 use crate::communicat::{SendInstructOperate, SendManipulateOperate};
 use crate::config::WindowsNamedPipesConfig;
@@ -25,10 +26,11 @@ pub struct WindowsNamedPipeProcessor;
 #[cfg(windows)]
 impl WindowsNamedPipeProcessor {
     pub async fn start(
-        windows_named_pipe_config: &WindowsNamedPipesConfig,
-        module_operate_sender: Sender<ModuleOperate>,
-        instruct_sender: Sender<InstructEntity>,
-        manipulate_sender: Sender<ManipulateEntity>,
+        windows_named_pipe_config: WindowsNamedPipesConfig,
+        cancellation_token: CancellationToken,
+        module_operate_sender: UnboundedSender<ModuleOperate>,
+        instruct_sender: UnboundedSender<InstructEntity>,
+        manipulate_sender: UnboundedSender<ManipulateEntity>,
     ) -> Result<()> {
         if !windows_named_pipe_config.enable {
             return Ok(());
@@ -78,34 +80,122 @@ impl WindowsNamedPipeProcessor {
             .first_pipe_instance(true)
             .create(manipulate_pipe_name)?;
 
-        try_join!(
-            Self::register_named_pipe_processor(module_operate_sender.clone(), register_server),
-            Self::offline_named_pipe_processor(module_operate_sender.clone(), offline_server),
-            Self::heartbeat_named_pipe_processor(module_operate_sender.clone(), heartbeat_server),
-            Self::update_named_pipe_processor(module_operate_sender.clone(), update_server),
-            Self::instruct_named_pipe_processor(instruct_sender, instruct_server),
-            Self::manipulate_named_pipe_processor(manipulate_sender, manipulate_server),
-        )?;
+        let register_cancellation_token = cancellation_token.clone();
+        let register_module_operate_sender = module_operate_sender.clone();
+        spawn(async move {
+            if let Err(e) = Self::register_named_pipe_processor(
+                register_cancellation_token.clone(),
+                register_module_operate_sender,
+                register_server,
+            )
+            .await
+            {
+                error!("register_named_pipe_processor Error: {}", e);
+                register_cancellation_token.cancel();
+            }
+            info!("register_named_pipe_processor Exit");
+        });
+
+        let offline_cancellation_token = cancellation_token.clone();
+        let offline_module_operate_sender = module_operate_sender.clone();
+        spawn(async move {
+            if let Err(e) = Self::offline_named_pipe_processor(
+                offline_cancellation_token.clone(),
+                offline_module_operate_sender,
+                offline_server,
+            )
+            .await
+            {
+                error!("offline_named_pipe_processor Error: {}", e);
+                offline_cancellation_token.cancel();
+            }
+            info!("offline_named_pipe_processor Exit");
+        });
+
+        let heartbeat_cancellation_token = cancellation_token.clone();
+        let heartbeat_module_operate_sender = module_operate_sender.clone();
+        spawn(async move {
+            if let Err(e) = Self::heartbeat_named_pipe_processor(
+                heartbeat_cancellation_token.clone(),
+                heartbeat_module_operate_sender,
+                heartbeat_server,
+            )
+            .await
+            {
+                error!("heartbeat_named_pipe_processor Error: {}", e);
+                heartbeat_cancellation_token.cancel();
+            }
+            info!("heartbeat_named_pipe_processor Exit");
+        });
+
+        let update_cancellation_token = cancellation_token.clone();
+        let update_module_operate_sender = module_operate_sender.clone();
+        spawn(async move {
+            if let Err(e) = Self::update_named_pipe_processor(
+                update_cancellation_token.clone(),
+                update_module_operate_sender,
+                update_server,
+            )
+            .await
+            {
+                error!("update_named_pipe_processor Error: {}", e);
+                update_cancellation_token.cancel();
+            }
+            info!("update_named_pipe_processor Exit");
+        });
+
+        let instruct_cancellation_token = cancellation_token.clone();
+        spawn(async move {
+            if let Err(e) = Self::instruct_named_pipe_processor(
+                instruct_cancellation_token.clone(),
+                instruct_sender,
+                instruct_server,
+            )
+            .await
+            {
+                error!("instruct_named_pipe_processor Error: {}", e);
+                instruct_cancellation_token.cancel();
+            }
+            info!("instruct_named_pipe_processor Exit");
+        });
+
+        let manipulate_cancellation_token = cancellation_token.clone();
+        spawn(async move {
+            if let Err(e) = Self::manipulate_named_pipe_processor(
+                manipulate_cancellation_token.clone(),
+                manipulate_sender,
+                manipulate_server,
+            )
+            .await
+            {
+                error!("manipulate_named_pipe_processor Error: {}", e);
+                manipulate_cancellation_token.cancel();
+            }
+            info!("manipulate_named_pipe_processor Exit");
+        });
         Ok(())
     }
 
     async fn register_named_pipe_processor(
-        module_operate_sender: Sender<ModuleOperate>,
-        module_server: NamedPipeServer,
+        cancellation_token: CancellationToken,
+        module_operate_sender: UnboundedSender<ModuleOperate>,
+        register_server: NamedPipeServer,
     ) -> Result<()> {
         loop {
-            module_server.readable().await?;
+            if cancellation_token.is_cancelled() {
+                return Ok(());
+            }
+            register_server.readable().await?;
             let mut data = vec![0; 1024];
 
-            match module_server.try_read(&mut data) {
+            match register_server.try_read(&mut data) {
                 Ok(0) => {
                     return Err(anyhow!("register_named_pipe_processor Read 0 Size"));
                 }
                 Ok(n) => {
                     let result: SubmoduleReq = SubmoduleReq::decode(&data[..n])?;
                     module_operate_sender
-                        .send(ModuleOperate::create_by_req(result, OperateType::REGISTER))
-                        .await?;
+                        .send(ModuleOperate::create_by_req(result, OperateType::REGISTER))?;
                 }
                 Err(e) if e.kind() == io::ErrorKind::WouldBlock => continue,
                 Err(e) => {
@@ -116,22 +206,25 @@ impl WindowsNamedPipeProcessor {
     }
 
     async fn offline_named_pipe_processor(
-        module_operate_sender: Sender<ModuleOperate>,
-        module_server: NamedPipeServer,
+        cancellation_token: CancellationToken,
+        module_operate_sender: UnboundedSender<ModuleOperate>,
+        offline_server: NamedPipeServer,
     ) -> Result<()> {
         loop {
-            module_server.readable().await?;
+            if cancellation_token.is_cancelled() {
+                return Ok(());
+            }
+            offline_server.readable().await?;
             let mut data = vec![0; 1024];
 
-            match module_server.try_read(&mut data) {
+            match offline_server.try_read(&mut data) {
                 Ok(0) => {
                     return Err(anyhow!("offline_named_pipe_processor Read 0 Size"));
                 }
                 Ok(n) => {
                     let result: SubmoduleReq = SubmoduleReq::decode(&data[..n])?;
                     module_operate_sender
-                        .send(ModuleOperate::create_by_req(result, OperateType::OFFLINE))
-                        .await?;
+                        .send(ModuleOperate::create_by_req(result, OperateType::OFFLINE))?;
                 }
                 Err(e) if e.kind() == io::ErrorKind::WouldBlock => continue,
                 Err(e) => {
@@ -142,22 +235,25 @@ impl WindowsNamedPipeProcessor {
     }
 
     async fn heartbeat_named_pipe_processor(
-        module_operate_sender: Sender<ModuleOperate>,
-        module_server: NamedPipeServer,
+        cancellation_token: CancellationToken,
+        module_operate_sender: UnboundedSender<ModuleOperate>,
+        heartbeat_server: NamedPipeServer,
     ) -> Result<()> {
         loop {
-            module_server.readable().await?;
+            if cancellation_token.is_cancelled() {
+                return Ok(());
+            }
+            heartbeat_server.readable().await?;
             let mut data = vec![0; 1024];
 
-            match module_server.try_read(&mut data) {
+            match heartbeat_server.try_read(&mut data) {
                 Ok(0) => {
                     return Err(anyhow!("heartbeat_named_pipe_processor Read 0 Size"));
                 }
                 Ok(n) => {
                     let result: SubmoduleReq = SubmoduleReq::decode(&data[..n])?;
                     module_operate_sender
-                        .send(ModuleOperate::create_by_req(result, OperateType::HEARTBEAT))
-                        .await?;
+                        .send(ModuleOperate::create_by_req(result, OperateType::HEARTBEAT))?;
                 }
                 Err(e) if e.kind() == io::ErrorKind::WouldBlock => continue,
                 Err(e) => {
@@ -168,22 +264,25 @@ impl WindowsNamedPipeProcessor {
     }
 
     async fn update_named_pipe_processor(
-        module_operate_sender: Sender<ModuleOperate>,
-        module_server: NamedPipeServer,
+        cancellation_token: CancellationToken,
+        module_operate_sender: UnboundedSender<ModuleOperate>,
+        update_server: NamedPipeServer,
     ) -> Result<()> {
         loop {
-            module_server.readable().await?;
+            if cancellation_token.is_cancelled() {
+                return Ok(());
+            }
+            update_server.readable().await?;
             let mut data = vec![0; 1024];
 
-            match module_server.try_read(&mut data) {
+            match update_server.try_read(&mut data) {
                 Ok(0) => {
                     return Err(anyhow!("update_named_pipe_processor Read 0 Size"));
                 }
                 Ok(n) => {
                     let result: SubmoduleReq = SubmoduleReq::decode(&data[..n])?;
                     module_operate_sender
-                        .send(ModuleOperate::create_by_req(result, OperateType::UPDATE))
-                        .await?;
+                        .send(ModuleOperate::create_by_req(result, OperateType::UPDATE))?;
                 }
                 Err(e) if e.kind() == io::ErrorKind::WouldBlock => continue,
                 Err(e) => {
@@ -194,10 +293,14 @@ impl WindowsNamedPipeProcessor {
     }
 
     async fn instruct_named_pipe_processor(
-        instruct_sender: Sender<InstructEntity>,
+        cancellation_token: CancellationToken,
+        instruct_sender: UnboundedSender<InstructEntity>,
         instruct_server: NamedPipeServer,
     ) -> Result<()> {
         loop {
+            if cancellation_token.is_cancelled() {
+                return Ok(());
+            }
             instruct_server.readable().await?;
             let mut data = vec![0; 1024];
 
@@ -207,9 +310,7 @@ impl WindowsNamedPipeProcessor {
                 }
                 Ok(n) => {
                     let result: InstructReq = InstructReq::decode(&data[..n])?;
-                    instruct_sender
-                        .send(InstructEntity::create_by_req(result))
-                        .await?;
+                    instruct_sender.send(InstructEntity::create_by_req(result))?;
                 }
                 Err(e) if e.kind() == io::ErrorKind::WouldBlock => continue,
                 Err(e) => {
@@ -220,10 +321,14 @@ impl WindowsNamedPipeProcessor {
     }
 
     async fn manipulate_named_pipe_processor(
-        manipulate_sender: Sender<ManipulateEntity>,
+        cancellation_token: CancellationToken,
+        manipulate_sender: UnboundedSender<ManipulateEntity>,
         manipulate_server: NamedPipeServer,
     ) -> Result<()> {
         loop {
+            if cancellation_token.is_cancelled() {
+                return Ok(());
+            }
             manipulate_server.readable().await?;
             let mut data = vec![0; 1024];
 
@@ -233,9 +338,7 @@ impl WindowsNamedPipeProcessor {
                 }
                 Ok(n) => {
                     let result: ManipulateReq = ManipulateReq::decode(&data[..n])?;
-                    manipulate_sender
-                        .send(ManipulateEntity::create_by_req(result))
-                        .await?;
+                    manipulate_sender.send(ManipulateEntity::create_by_req(result))?;
                 }
                 Err(e) if e.kind() == io::ErrorKind::WouldBlock => continue,
                 Err(e) => {
@@ -275,7 +378,7 @@ pub struct WindowsNamedPipeManipulateClient {
 #[cfg(windows)]
 impl WindowsNamedPipeInstructClient {
     pub fn init(path: String) -> Result<Self> {
-        debug!("Open Instruct Pipe Sender From {}", &path);
+        debug!("Open Instruct Pipe UnboundedSender From {}", &path);
         let sender = ClientOptions::new().open(path)?;
         Ok(WindowsNamedPipeInstructClient {
             instruct_sender: sender,
@@ -311,7 +414,7 @@ impl WindowsNamedPipeInstructClient {
 #[cfg(windows)]
 impl WindowsNamedPipeManipulateClient {
     pub fn init(path: String) -> Result<Self> {
-        debug!("Open Manipulate Pipe Sender From {}", &path);
+        debug!("Open Manipulate Pipe UnboundedSender From {}", &path);
         let sender = ClientOptions::new().open(path)?;
         Ok(WindowsNamedPipeManipulateClient {
             manipulate_sender: sender,

@@ -13,7 +13,7 @@ pub trait Encoder {
     /// 初始化编码模块
     fn init(model_path: String, model_name: String) -> Result<Self>
     where
-        Self: Sized + Send;
+        Self: Sized + Send + Sync;
 
     /// 对指令字符串进行编码
     fn encode(&mut self, input: String) -> Result<Vec<f32>>;
@@ -24,7 +24,7 @@ pub trait Encoder {
 
 pub fn encoder_builder(
     encoder_config: &EncoderConfig,
-) -> Result<Arc<Mutex<Box<dyn Encoder + Send>>>> {
+) -> Result<Arc<Mutex<Box<dyn Encoder + Send + Sync>>>> {
     info!("use encoder type: {:?}", &encoder_config.encoder_type);
     return match encoder_config.encoder_type {
         EncoderType::SentenceTransformers => {

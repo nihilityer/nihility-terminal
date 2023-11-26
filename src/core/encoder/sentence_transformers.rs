@@ -18,7 +18,7 @@ pub struct SentenceTransformers {
 impl Encoder for SentenceTransformers {
     fn init(model_path: String, model_name: String) -> Result<Self>
     where
-        Self: Sized,
+        Self: Sized + Send + Sync,
     {
         let onnx_model_path = format!("{}/{}/model.onnx", model_path, model_name);
         let tokenizers_config_path = format!("{}/{}/tokenizer.json", model_path, model_name);

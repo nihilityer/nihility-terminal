@@ -9,10 +9,11 @@ pub struct PipeProcessor;
 #[cfg(unix)]
 impl PipeProcessor {
     pub async fn start(
-        pipe_config: &PipeConfig,
-        module_sender: Sender<Submodule>,
-        instruct_sender: Sender<InstructEntity>,
-        manipulate_sender: Sender<ManipulateEntity>,
+        pipe_config: PipeConfig,
+        cancellation_token: CancellationToken,
+        module_sender: UnboundedSender<Submodule>,
+        instruct_sender: UnboundedSender<InstructEntity>,
+        manipulate_sender: UnboundedSender<ManipulateEntity>,
     ) -> Result<()> {
         if !pipe_config.enable {
             return Ok(());
@@ -78,7 +79,7 @@ impl PipeProcessor {
 
     /// 负责接收pipe模块注册信息
     async fn module_pipe_processor(
-        module_sender: &Sender<Submodule>,
+        module_sender: &UnboundedSender<Submodule>,
         module_rx: &Receiver,
     ) -> Result<()> {
         module_rx.readable().await?;
@@ -103,7 +104,7 @@ impl PipeProcessor {
 
     /// 负责接收pipe指令信息
     async fn instruct_pipe_processor(
-        instruct_sender: &Sender<InstructEntity>,
+        instruct_sender: &UnboundedSender<InstructEntity>,
         instruct_rx: &Receiver,
     ) -> Result<()> {
         instruct_rx.readable().await?;
@@ -128,7 +129,7 @@ impl PipeProcessor {
 
     /// 负责接收pipe操作信息
     async fn manipulate_pipe_processor(
-        manipulate_sender: &Sender<ManipulateEntity>,
+        manipulate_sender: &UnboundedSender<ManipulateEntity>,
         manipulate_rx: &Receiver,
     ) -> Result<()> {
         manipulate_rx.readable().await?;
@@ -172,12 +173,12 @@ impl SendManipulateOperate for PipeUnixManipulateClient {
 
 #[cfg(unix)]
 pub struct PipeUnixInstructClient {
-    pub instruct_sender: Sender,
+    pub instruct_sender: UnboundedSender,
 }
 
 #[cfg(unix)]
 pub struct PipeUnixManipulateClient {
-    pub manipulate_sender: Sender,
+    pub manipulate_sender: UnboundedSender,
 }
 
 #[cfg(unix)]

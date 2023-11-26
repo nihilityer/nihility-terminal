@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use async_trait::async_trait;
 use anyhow::Result;
+use async_trait::async_trait;
 use tracing::info;
 
 use crate::config::{InstructManagerConfig, InstructManagerType};
@@ -23,7 +23,7 @@ pub trait InstructManager {
     /// 初始化指令管理组件
     async fn init(config: HashMap<String, String>) -> Result<Self>
     where
-        Self: Sized;
+        Self: Sized + Send + Sync;
 
     /// 从指令管理组件中搜索匹配的子模块名称
     async fn search(&self, encode: Vec<f32>) -> Result<String>;
@@ -37,7 +37,7 @@ pub trait InstructManager {
 
 pub async fn build_instruct_manager(
     config: InstructManagerConfig,
-) -> Result<Arc<tokio::sync::Mutex<Box<dyn InstructManager + Send>>>> {
+) -> Result<Arc<tokio::sync::Mutex<Box<dyn InstructManager + Send + Sync>>>> {
     info!("Module Manager Type: {:?}", &config.manager_type);
     match config.manager_type {
         InstructManagerType::GrpcQdrant => {

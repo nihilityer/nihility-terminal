@@ -36,7 +36,7 @@ pub struct GrpcQdrant {
 impl InstructManager for GrpcQdrant {
     async fn init(config: HashMap<String, String>) -> Result<Self>
     where
-        Self: Sized,
+        Self: Sized + Send + Sync,
     {
         if let None = config.get(ENCODE_SIZE_FIELD) {
             return Err(anyhow!(

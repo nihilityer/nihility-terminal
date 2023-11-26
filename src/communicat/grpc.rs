@@ -9,7 +9,8 @@ use nihility_common::manipulate::{ManipulateReq, ManipulateResp};
 use nihility_common::response_code::RespCode;
 use nihility_common::submodule::submodule_server::{Submodule, SubmoduleServer};
 use nihility_common::submodule::{SubModuleResp, SubmoduleReq};
-use tokio::sync::mpsc::Sender;
+use tokio::sync::mpsc::UnboundedSender;
+use tokio_util::sync::CancellationToken;
 use tonic::transport::{Channel, Server};
 use tonic::{Request, Response, Status};
 use tracing::info;
@@ -24,30 +25,34 @@ pub struct GrpcServer;
 
 impl GrpcServer {
     pub async fn start(
-        grpc_config: &GrpcConfig,
-        operate_module_sender: Sender<ModuleOperate>,
-        instruct_sender: Sender<InstructEntity>,
-        manipulate_sender: Sender<ManipulateEntity>,
+        grpc_config: GrpcConfig,
+        cancellation_token: CancellationToken,
+        operate_module_sender: UnboundedSender<ModuleOperate>,
+        instruct_sender: UnboundedSender<InstructEntity>,
+        manipulate_sender: UnboundedSender<ManipulateEntity>,
     ) -> Result<()> {
-        if grpc_config.enable {
-            let bind_addr = format!(
-                "{}:{}",
-                grpc_config.addr.to_string(),
-                grpc_config.port.to_string()
-            );
-            info!("Grpc Server Bind At {}", &bind_addr);
-
-            Server::builder()
-                .add_service(SubmoduleServer::new(SubmoduleImpl::init(
-                    operate_module_sender,
-                )))
-                .add_service(InstructServer::new(InstructImpl::init(instruct_sender)))
-                .add_service(ManipulateServer::new(ManipulateImpl::init(
-                    manipulate_sender,
-                )))
-                .serve(bind_addr.parse()?)
-                .await?;
+        if !grpc_config.enable {
+            return Ok(());
         }
+        let bind_addr = format!(
+            "{}:{}",
+            grpc_config.addr.to_string(),
+            grpc_config.port.to_string()
+        );
+        info!("Grpc Server Bind At {}", &bind_addr);
+
+        Server::builder()
+            .add_service(SubmoduleServer::new(SubmoduleImpl::init(
+                operate_module_sender,
+            )))
+            .add_service(InstructServer::new(InstructImpl::init(instruct_sender)))
+            .add_service(ManipulateServer::new(ManipulateImpl::init(
+                manipulate_sender,
+            )))
+            .serve_with_shutdown(bind_addr.parse()?, async move {
+                cancellation_token.cancelled().await
+            })
+            .await?;
 
         Ok(())
     }
@@ -76,15 +81,15 @@ impl SendManipulateOperate for ManipulateClient<Channel> {
 }
 
 pub struct SubmoduleImpl {
-    operate_module_sender: Sender<ModuleOperate>,
+    operate_module_sender: UnboundedSender<ModuleOperate>,
 }
 
 pub struct InstructImpl {
-    instruct_sender: Sender<InstructEntity>,
+    instruct_sender: UnboundedSender<InstructEntity>,
 }
 
 pub struct ManipulateImpl {
-    manipulate_sender: Sender<ManipulateEntity>,
+    manipulate_sender: UnboundedSender<ManipulateEntity>,
 }
 
 #[tonic::async_trait]
@@ -98,7 +103,6 @@ impl Submodule for SubmoduleImpl {
                 request.into_inner(),
                 OperateType::REGISTER,
             ))
-            .await
             .unwrap();
         Ok(Response::new(SubModuleResp {
             success: true,
@@ -115,7 +119,6 @@ impl Submodule for SubmoduleImpl {
                 request.into_inner(),
                 OperateType::OFFLINE,
             ))
-            .await
             .unwrap();
         Ok(Response::new(SubModuleResp {
             success: true,
@@ -132,7 +135,6 @@ impl Submodule for SubmoduleImpl {
                 request.into_inner(),
                 OperateType::HEARTBEAT,
             ))
-            .await
             .unwrap();
         Ok(Response::new(SubModuleResp {
             success: true,
@@ -149,7 +151,6 @@ impl Submodule for SubmoduleImpl {
                 request.into_inner(),
                 OperateType::UPDATE,
             ))
-            .await
             .unwrap();
         Ok(Response::new(SubModuleResp {
             success: true,
@@ -166,7 +167,6 @@ impl Instruct for InstructImpl {
     ) -> Result<Response<InstructResp>, Status> {
         self.instruct_sender
             .send(InstructEntity::create_by_req(request.into_inner()))
-            .await
             .unwrap();
         Ok(Response::new(InstructResp {
             status: true,
@@ -183,7 +183,6 @@ impl Manipulate for ManipulateImpl {
     ) -> Result<Response<ManipulateResp>, Status> {
         self.manipulate_sender
             .send(ManipulateEntity::create_by_req(request.into_inner()))
-            .await
             .unwrap();
         Ok(Response::new(ManipulateResp {
             status: true,
@@ -193,7 +192,7 @@ impl Manipulate for ManipulateImpl {
 }
 
 impl SubmoduleImpl {
-    pub fn init(operate_module_sender: Sender<ModuleOperate>) -> Self {
+    pub fn init(operate_module_sender: UnboundedSender<ModuleOperate>) -> Self {
         SubmoduleImpl {
             operate_module_sender,
         }
@@ -201,7 +200,7 @@ impl SubmoduleImpl {
 }
 
 impl InstructImpl {
-    pub fn init(sender: Sender<InstructEntity>) -> Self {
+    pub fn init(sender: UnboundedSender<InstructEntity>) -> Self {
         InstructImpl {
             instruct_sender: sender,
         }
@@ -209,7 +208,7 @@ impl InstructImpl {
 }
 
 impl ManipulateImpl {
-    pub fn init(sender: Sender<ManipulateEntity>) -> Self {
+    pub fn init(sender: UnboundedSender<ManipulateEntity>) -> Self {
         ManipulateImpl {
             manipulate_sender: sender,
         }
