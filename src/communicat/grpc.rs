@@ -12,6 +12,7 @@ use nihility_common::submodule::{SubModuleResp, SubmoduleReq};
 use tokio::sync::mpsc::Sender;
 use tonic::transport::{Channel, Server};
 use tonic::{Request, Response, Status};
+use tracing::info;
 
 use crate::communicat::{SendInstructOperate, SendManipulateOperate};
 use crate::config::GrpcConfig;
@@ -34,7 +35,7 @@ impl GrpcServer {
                 grpc_config.addr.to_string(),
                 grpc_config.port.to_string()
             );
-            tracing::info!("Grpc Server bind at {}", &bind_addr);
+            info!("Grpc Server Bind At {}", &bind_addr);
 
             Server::builder()
                 .add_service(SubmoduleServer::new(SubmoduleImpl::init(
@@ -92,10 +93,13 @@ impl Submodule for SubmoduleImpl {
         &self,
         request: Request<SubmoduleReq>,
     ) -> Result<Response<SubModuleResp>, Status> {
-        let module =
-            ModuleOperate::create_by_req(request.into_inner(), OperateType::REGISTER).unwrap();
-        tracing::info!("start register model:{}", &module.name);
-        self.operate_module_sender.send(module).await.unwrap();
+        self.operate_module_sender
+            .send(ModuleOperate::create_by_req(
+                request.into_inner(),
+                OperateType::REGISTER,
+            ))
+            .await
+            .unwrap();
         Ok(Response::new(SubModuleResp {
             success: true,
             resp_code: RespCode::Success.into(),
@@ -106,10 +110,13 @@ impl Submodule for SubmoduleImpl {
         &self,
         request: Request<SubmoduleReq>,
     ) -> Result<Response<SubModuleResp>, Status> {
-        let module =
-            ModuleOperate::create_by_req(request.into_inner(), OperateType::OFFLINE).unwrap();
-        tracing::info!("start offline model:{:?}", &module.name);
-        self.operate_module_sender.send(module).await.unwrap();
+        self.operate_module_sender
+            .send(ModuleOperate::create_by_req(
+                request.into_inner(),
+                OperateType::OFFLINE,
+            ))
+            .await
+            .unwrap();
         Ok(Response::new(SubModuleResp {
             success: true,
             resp_code: RespCode::Success.into(),
@@ -120,10 +127,13 @@ impl Submodule for SubmoduleImpl {
         &self,
         request: Request<SubmoduleReq>,
     ) -> std::result::Result<Response<SubModuleResp>, Status> {
-        let module =
-            ModuleOperate::create_by_req(request.into_inner(), OperateType::HEARTBEAT).unwrap();
-        tracing::info!("get model:{:?} heartbeat", &module.name);
-        self.operate_module_sender.send(module).await.unwrap();
+        self.operate_module_sender
+            .send(ModuleOperate::create_by_req(
+                request.into_inner(),
+                OperateType::HEARTBEAT,
+            ))
+            .await
+            .unwrap();
         Ok(Response::new(SubModuleResp {
             success: true,
             resp_code: RespCode::Success.into(),
@@ -134,10 +144,13 @@ impl Submodule for SubmoduleImpl {
         &self,
         request: Request<SubmoduleReq>,
     ) -> std::result::Result<Response<SubModuleResp>, Status> {
-        let module =
-            ModuleOperate::create_by_req(request.into_inner(), OperateType::UPDATE).unwrap();
-        tracing::info!("get model:{:?} update info", &module.name);
-        self.operate_module_sender.send(module).await.unwrap();
+        self.operate_module_sender
+            .send(ModuleOperate::create_by_req(
+                request.into_inner(),
+                OperateType::UPDATE,
+            ))
+            .await
+            .unwrap();
         Ok(Response::new(SubModuleResp {
             success: true,
             resp_code: RespCode::Success.into(),
@@ -151,9 +164,10 @@ impl Instruct for InstructImpl {
         &self,
         request: Request<InstructReq>,
     ) -> Result<Response<InstructResp>, Status> {
-        let instruct = InstructEntity::create_by_req(request.into_inner());
-        tracing::info!("get instruct:{:?}", instruct);
-        self.instruct_sender.send(instruct).await.unwrap();
+        self.instruct_sender
+            .send(InstructEntity::create_by_req(request.into_inner()))
+            .await
+            .unwrap();
         Ok(Response::new(InstructResp {
             status: true,
             resp_code: RespCode::Success.into(),
@@ -167,9 +181,10 @@ impl Manipulate for ManipulateImpl {
         &self,
         request: Request<ManipulateReq>,
     ) -> Result<Response<ManipulateResp>, Status> {
-        let manipulate = ManipulateEntity::create_by_req(request.into_inner());
-        tracing::info!("get manipulate:{:?}", manipulate);
-        self.manipulate_sender.send(manipulate).await.unwrap();
+        self.manipulate_sender
+            .send(ManipulateEntity::create_by_req(request.into_inner()))
+            .await
+            .unwrap();
         Ok(Response::new(ManipulateResp {
             status: true,
             resp_code: RespCode::Success.into(),

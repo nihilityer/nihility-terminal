@@ -78,7 +78,10 @@ pub struct PipeConfig {
 pub struct WindowsNamedPipesConfig {
     pub enable: bool,
     pub pipe_prefix: String,
-    pub module_pipe_name: String,
+    pub register_pipe_name: String,
+    pub offline_pipe_name: String,
+    pub heartbeat_pipe_name: String,
+    pub update_pipe_name: String,
     pub instruct_pipe_name: String,
     pub manipulate_pipe_name: String,
 }
@@ -161,7 +164,10 @@ impl SummaryConfig {
         let windows_named_pipes_config = WindowsNamedPipesConfig {
             enable: true,
             pipe_prefix: r"\\.\pipe\nihilityer".to_string(),
-            module_pipe_name: "model".to_string(),
+            register_pipe_name: "register".to_string(),
+            offline_pipe_name: "offline".to_string(),
+            heartbeat_pipe_name: "heartbeat".to_string(),
+            update_pipe_name: "update".to_string(),
             instruct_pipe_name: "master_instruct".to_string(),
             manipulate_pipe_name: "manipulate".to_string(),
         };

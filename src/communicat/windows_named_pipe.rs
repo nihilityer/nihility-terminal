@@ -10,6 +10,7 @@ use prost::Message;
 use tokio::net::windows::named_pipe::{ClientOptions, NamedPipeClient};
 use tokio::net::windows::named_pipe::{NamedPipeServer, ServerOptions};
 use tokio::sync::mpsc::Sender;
+use tokio::try_join;
 use tracing::{debug, info};
 
 use crate::communicat::{SendInstructOperate, SendManipulateOperate};
@@ -32,10 +33,22 @@ impl WindowsNamedPipeProcessor {
         if !windows_named_pipe_config.enable {
             return Ok(());
         }
-        info!("WindowsNamedPipeProcessor start");
-        let module_pipe_name = format!(
+        info!("Windows Named Pipe Processor Start");
+        let register_pipe_name = format!(
             r"{}\{}",
-            &windows_named_pipe_config.pipe_prefix, &windows_named_pipe_config.module_pipe_name
+            &windows_named_pipe_config.pipe_prefix, &windows_named_pipe_config.register_pipe_name
+        );
+        let offline_pipe_name = format!(
+            r"{}\{}",
+            &windows_named_pipe_config.pipe_prefix, &windows_named_pipe_config.offline_pipe_name
+        );
+        let heartbeat_pipe_name = format!(
+            r"{}\{}",
+            &windows_named_pipe_config.pipe_prefix, &windows_named_pipe_config.heartbeat_pipe_name
+        );
+        let update_pipe_name = format!(
+            r"{}\{}",
+            &windows_named_pipe_config.pipe_prefix, &windows_named_pipe_config.update_pipe_name
         );
         let instruct_pipe_name = format!(
             r"{}\{}",
@@ -46,9 +59,18 @@ impl WindowsNamedPipeProcessor {
             &windows_named_pipe_config.pipe_prefix, &windows_named_pipe_config.manipulate_pipe_name
         );
 
-        let module_server = ServerOptions::new()
+        let register_server = ServerOptions::new()
             .first_pipe_instance(true)
-            .create(module_pipe_name)?;
+            .create(register_pipe_name)?;
+        let offline_server = ServerOptions::new()
+            .first_pipe_instance(true)
+            .create(offline_pipe_name)?;
+        let heartbeat_server = ServerOptions::new()
+            .first_pipe_instance(true)
+            .create(heartbeat_pipe_name)?;
+        let update_server = ServerOptions::new()
+            .first_pipe_instance(true)
+            .create(update_pipe_name)?;
         let instruct_server = ServerOptions::new()
             .first_pipe_instance(true)
             .create(instruct_pipe_name)?;
@@ -56,15 +78,18 @@ impl WindowsNamedPipeProcessor {
             .first_pipe_instance(true)
             .create(manipulate_pipe_name)?;
 
-        tokio::try_join!(
-            Self::module_named_pipe_processor(module_operate_sender, module_server),
+        try_join!(
+            Self::register_named_pipe_processor(module_operate_sender.clone(), register_server),
+            Self::offline_named_pipe_processor(module_operate_sender.clone(), offline_server),
+            Self::heartbeat_named_pipe_processor(module_operate_sender.clone(), heartbeat_server),
+            Self::update_named_pipe_processor(module_operate_sender.clone(), update_server),
             Self::instruct_named_pipe_processor(instruct_sender, instruct_server),
             Self::manipulate_named_pipe_processor(manipulate_sender, manipulate_server),
         )?;
         Ok(())
     }
 
-    async fn module_named_pipe_processor(
+    async fn register_named_pipe_processor(
         module_operate_sender: Sender<ModuleOperate>,
         module_server: NamedPipeServer,
     ) -> Result<()> {
@@ -74,14 +99,91 @@ impl WindowsNamedPipeProcessor {
 
             match module_server.try_read(&mut data) {
                 Ok(0) => {
-                    return Err(anyhow!("module_named_pipe_processor read 0 size"));
+                    return Err(anyhow!("register_named_pipe_processor Read 0 Size"));
                 }
                 Ok(n) => {
                     let result: SubmoduleReq = SubmoduleReq::decode(&data[..n])?;
-                    debug!("named pipe model name:{:?}", &result.name);
-                    let module_operate =
-                        ModuleOperate::create_by_req(result, OperateType::REGISTER)?;
-                    module_operate_sender.send(module_operate).await?;
+                    module_operate_sender
+                        .send(ModuleOperate::create_by_req(result, OperateType::REGISTER))
+                        .await?;
+                }
+                Err(e) if e.kind() == io::ErrorKind::WouldBlock => continue,
+                Err(e) => {
+                    return Err(e.into());
+                }
+            }
+        }
+    }
+
+    async fn offline_named_pipe_processor(
+        module_operate_sender: Sender<ModuleOperate>,
+        module_server: NamedPipeServer,
+    ) -> Result<()> {
+        loop {
+            module_server.readable().await?;
+            let mut data = vec![0; 1024];
+
+            match module_server.try_read(&mut data) {
+                Ok(0) => {
+                    return Err(anyhow!("offline_named_pipe_processor Read 0 Size"));
+                }
+                Ok(n) => {
+                    let result: SubmoduleReq = SubmoduleReq::decode(&data[..n])?;
+                    module_operate_sender
+                        .send(ModuleOperate::create_by_req(result, OperateType::OFFLINE))
+                        .await?;
+                }
+                Err(e) if e.kind() == io::ErrorKind::WouldBlock => continue,
+                Err(e) => {
+                    return Err(e.into());
+                }
+            }
+        }
+    }
+
+    async fn heartbeat_named_pipe_processor(
+        module_operate_sender: Sender<ModuleOperate>,
+        module_server: NamedPipeServer,
+    ) -> Result<()> {
+        loop {
+            module_server.readable().await?;
+            let mut data = vec![0; 1024];
+
+            match module_server.try_read(&mut data) {
+                Ok(0) => {
+                    return Err(anyhow!("heartbeat_named_pipe_processor Read 0 Size"));
+                }
+                Ok(n) => {
+                    let result: SubmoduleReq = SubmoduleReq::decode(&data[..n])?;
+                    module_operate_sender
+                        .send(ModuleOperate::create_by_req(result, OperateType::HEARTBEAT))
+                        .await?;
+                }
+                Err(e) if e.kind() == io::ErrorKind::WouldBlock => continue,
+                Err(e) => {
+                    return Err(e.into());
+                }
+            }
+        }
+    }
+
+    async fn update_named_pipe_processor(
+        module_operate_sender: Sender<ModuleOperate>,
+        module_server: NamedPipeServer,
+    ) -> Result<()> {
+        loop {
+            module_server.readable().await?;
+            let mut data = vec![0; 1024];
+
+            match module_server.try_read(&mut data) {
+                Ok(0) => {
+                    return Err(anyhow!("update_named_pipe_processor Read 0 Size"));
+                }
+                Ok(n) => {
+                    let result: SubmoduleReq = SubmoduleReq::decode(&data[..n])?;
+                    module_operate_sender
+                        .send(ModuleOperate::create_by_req(result, OperateType::UPDATE))
+                        .await?;
                 }
                 Err(e) if e.kind() == io::ErrorKind::WouldBlock => continue,
                 Err(e) => {
@@ -101,13 +203,13 @@ impl WindowsNamedPipeProcessor {
 
             match instruct_server.try_read(&mut data) {
                 Ok(0) => {
-                    return Err(anyhow!("instruct_named_pipe_processor read 0 size"));
+                    return Err(anyhow!("instruct_named_pipe_processor Read 0 Size"));
                 }
                 Ok(n) => {
                     let result: InstructReq = InstructReq::decode(&data[..n])?;
-                    debug!("named pipe instruct name:{:?}", &result);
-                    let instruct = InstructEntity::create_by_req(result);
-                    instruct_sender.send(instruct).await?;
+                    instruct_sender
+                        .send(InstructEntity::create_by_req(result))
+                        .await?;
                 }
                 Err(e) if e.kind() == io::ErrorKind::WouldBlock => continue,
                 Err(e) => {
@@ -127,13 +229,13 @@ impl WindowsNamedPipeProcessor {
 
             match manipulate_server.try_read(&mut data) {
                 Ok(0) => {
-                    return Err(anyhow!("instruct_named_pipe_processor read 0 size"));
+                    return Err(anyhow!("manipulate_named_pipe_processor Read 0 Size"));
                 }
                 Ok(n) => {
                     let result: ManipulateReq = ManipulateReq::decode(&data[..n])?;
-                    debug!("named pipe manipulate name:{:?}", &result);
-                    let manipulate = ManipulateEntity::create_by_req(result);
-                    manipulate_sender.send(manipulate).await?;
+                    manipulate_sender
+                        .send(ManipulateEntity::create_by_req(result))
+                        .await?;
                 }
                 Err(e) if e.kind() == io::ErrorKind::WouldBlock => continue,
                 Err(e) => {
@@ -173,7 +275,7 @@ pub struct WindowsNamedPipeManipulateClient {
 #[cfg(windows)]
 impl WindowsNamedPipeInstructClient {
     pub fn init(path: String) -> Result<Self> {
-        debug!("open instruct pipe sender from {}", &path);
+        debug!("Open Instruct Pipe Sender From {}", &path);
         let sender = ClientOptions::new().open(path)?;
         Ok(WindowsNamedPipeInstructClient {
             instruct_sender: sender,
@@ -209,7 +311,7 @@ impl WindowsNamedPipeInstructClient {
 #[cfg(windows)]
 impl WindowsNamedPipeManipulateClient {
     pub fn init(path: String) -> Result<Self> {
-        debug!("open manipulate pipe sender from {}", &path);
+        debug!("Open Manipulate Pipe Sender From {}", &path);
         let sender = ClientOptions::new().open(path)?;
         Ok(WindowsNamedPipeManipulateClient {
             manipulate_sender: sender,

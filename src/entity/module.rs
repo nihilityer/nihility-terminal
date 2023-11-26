@@ -20,8 +20,14 @@ use crate::entity::instruct::InstructEntity;
 use crate::entity::manipulate::ManipulateEntity;
 
 const GRPC_CONN_ADDR_FIELD: &str = "grpc_addr";
+#[cfg(windows)]
 const INSTRUCT_WINDOWS_NAMED_PIPE_FIELD: &str = "instruct_windows_named_pipe";
+#[cfg(windows)]
 const MANIPULATE_WINDOWS_NAMED_PIPE_FIELD: &str = "manipulate_windows_named_pipe";
+#[cfg(unix)]
+const INSTRUCT_PIPE_FIELD: &str = "instruct_pipe";
+#[cfg(unix)]
+const MANIPULATE_FIELD: &str = "manipulate_pipe";
 
 /// 操作子模块类型
 #[derive(Debug)]
@@ -58,31 +64,31 @@ pub struct Submodule {
 
 impl ModuleOperate {
     /// 通过应用间消息创建操作子模块消息结构体，由调用的方法决定结构体类型
-    pub fn create_by_req(req: SubmoduleReq, operate_type: OperateType) -> Result<Self> {
-        Ok(ModuleOperate {
+    pub fn create_by_req(req: SubmoduleReq, operate_type: OperateType) -> Self {
+        ModuleOperate {
             name: req.name.clone(),
             default_instruct: req.default_instruct.clone(),
             submodule_type: req.clone().submodule_type(),
             conn_params: req.conn_params.clone(),
             operate_type,
-        })
+        }
     }
 
     /// 通过已创建子模块构建子模块操作，无法获取连接地址，当此时已不需要这个变量
     ///
     /// 目前用来心跳过期时离线模块
-    pub fn create_by_submodule(submodule: &Submodule, operate_type: OperateType) -> Result<Self> {
+    pub fn create_by_submodule(submodule: &Submodule, operate_type: OperateType) -> Self {
         let mut default_instruct = Vec::new();
         for (instruct, _) in submodule.default_instruct_map.iter() {
             default_instruct.push(instruct.to_string());
         }
-        Ok(ModuleOperate {
+        ModuleOperate {
             name: submodule.name.to_string(),
             default_instruct,
             submodule_type: submodule.sub_module_type.clone(),
             conn_params: HashMap::<String, String>::new(),
             operate_type,
-        })
+        }
     }
 }
 
@@ -95,12 +101,12 @@ impl Submodule {
                 #[cfg(unix)]
                 return Ok(Self::create_pipe_module(operate)?);
                 #[cfg(windows)]
-                return Err(anyhow!("This OS cannot create PipeType Submodule"));
+                return Err(anyhow!("This OS Cannot Create PipeType Submodule"));
             }
             SubmoduleType::WindowsNamedPipeType => {
                 #[cfg(unix)]
                 return Err(anyhow!(
-                    "This OS cannot create WindowsNamedPipeType Submodule"
+                    "This OS Cannot Create WindowsNamedPipeType Submodule"
                 ));
                 #[cfg(windows)]
                 return Ok(Self::create_windows_named_pipe_module(operate)?);
@@ -114,9 +120,29 @@ impl Submodule {
     /// 创建pipe通信的子模块
     #[cfg(unix)]
     fn create_pipe_module(operate: ModuleOperate) -> Result<Submodule> {
-        debug!("start create pipe model");
-        let instruct_path = operate.conn_params[0].to_string();
-        let manipulate_path = operate.conn_params[1].to_string();
+        debug!("Start Create Pipe Submodule By {:?}", &operate);
+        if let None = operate.conn_params.get(INSTRUCT_PIPE_FIELD) {
+            return Err(anyhow!(
+                "Create {:?} Type Submodule Error, ModuleOperate Missing {:?} Filed",
+                &operate.submodule_type,
+                INSTRUCT_PIPE_FIELD
+            ));
+        }
+        if let None = operate.conn_params.get(MANIPULATE_PIPE_FIELD) {
+            return Err(anyhow!(
+                "Create {:?} Type Submodule Error, ModuleOperate Missing {:?} Filed",
+                &operate.submodule_type,
+                MANIPULATE_PIPE_FIELD
+            ));
+        }
+        let instruct_path = operate
+            .conn_params
+            .get(INSTRUCT_PIPE_FIELD)
+            .unwrap();
+        let manipulate_path = operate
+            .conn_params
+            .get(MANIPULATE_PIPE_FIELD)
+            .unwrap();
         let instruct_client = Box::new(PipeUnixInstructClient::init(instruct_path)?);
         let manipulate_client = Box::new(PipeUnixManipulateClient::init(manipulate_path)?);
         let mut instruct_map = HashMap::<String, String>::new();
@@ -124,11 +150,10 @@ impl Submodule {
             instruct_map.insert(instruct, String::new());
         }
         let timestamp = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs();
-        debug!("create pipe model {} success", &req.name);
+        debug!("Create Pipe Submodule {:?} Success", &operate.name);
         Ok(Submodule {
             name: operate.name,
-            default_instruct: operate.default_instruct.into(),
-            instruct_points_id: Vec::<String>::new(),
+            default_instruct_map: instruct_map,
             sub_module_type: operate.submodule_type,
             heartbeat_time: timestamp,
             instruct_client,
@@ -139,17 +164,17 @@ impl Submodule {
     /// 创建WindowsNamedPipe通信的子模块
     #[cfg(windows)]
     fn create_windows_named_pipe_module(operate: ModuleOperate) -> Result<Submodule> {
-        debug!("start create pipe model");
+        debug!("Start Create Windows Named Pipe Submodule By {:?}", &operate);
         if let None = operate.conn_params.get(INSTRUCT_WINDOWS_NAMED_PIPE_FIELD) {
             return Err(anyhow!(
-                "create {:?} type Submodule Error, ModuleOperate not have {:?} filed",
+                "Create {:?} Type Submodule Error, ModuleOperate Missing {:?} Filed",
                 &operate.submodule_type,
                 INSTRUCT_WINDOWS_NAMED_PIPE_FIELD
             ));
         }
         if let None = operate.conn_params.get(MANIPULATE_WINDOWS_NAMED_PIPE_FIELD) {
             return Err(anyhow!(
-                "create {:?} type Submodule Error, ModuleOperate not have {:?} filed",
+                "Create {:?} Type Submodule Error, ModuleOperate Missing {:?} Filed",
                 &operate.submodule_type,
                 MANIPULATE_WINDOWS_NAMED_PIPE_FIELD
             ));
@@ -173,7 +198,7 @@ impl Submodule {
             instruct_map.insert(instruct, String::new());
         }
         let timestamp = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs();
-        debug!("create pipe model {} success", &operate.name);
+        debug!("Create Windows Named Pipe Submodule {:?} Success", &operate.name);
         Ok(Submodule {
             name: operate.name,
             default_instruct_map: instruct_map,
@@ -188,10 +213,10 @@ impl Submodule {
     ///
     /// 连接参数需要具有`grpc_addr`参数
     async fn create_grpc_module(operate: ModuleOperate) -> Result<Submodule> {
-        debug!("start create grpc submodule by {:?}", &operate);
+        debug!("Start Create Grpc Submodule By {:?}", &operate);
         if let None = operate.conn_params.get(GRPC_CONN_ADDR_FIELD) {
             return Err(anyhow!(
-                "create {:?} type Submodule Error, ModuleOperate not have {:?} filed",
+                "Create {:?} Type Submodule Error, ModuleOperate Missing {:?} Filed",
                 &operate.submodule_type,
                 GRPC_CONN_ADDR_FIELD
             ));
@@ -206,7 +231,7 @@ impl Submodule {
             instruct_map.insert(instruct, String::new());
         }
         let timestamp = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs();
-        debug!("create grpc model {} success", &operate.name);
+        debug!("Create Grpc Model {:?} Success", &operate.name);
         Ok(Submodule {
             name: operate.name,
             default_instruct_map: instruct_map,
@@ -218,33 +243,14 @@ impl Submodule {
     }
 
     /// 模块发送指令由此方法统一执行
-    pub async fn send_instruct(&mut self, instruct: InstructEntity) -> Result<bool> {
-        debug!("send instruct client type:{:?}", self.sub_module_type);
-        match self.instruct_client.send(instruct.create_req()).await? {
-            RespCode::Success => {
-                return Ok(true);
-            }
-            other_resp_code => {
-                debug!("{:?} send_instruct error: {:?}", self.name, other_resp_code);
-            }
-        }
-        Ok(false)
+    pub async fn send_instruct(&mut self, instruct: InstructEntity) -> Result<RespCode> {
+        debug!("Send Instruct Client Type: {:?}", self.sub_module_type);
+        Ok(self.instruct_client.send(instruct.create_req()).await?)
     }
 
     /// 模块发送操作由此模块统一执行
-    pub async fn send_manipulate(&mut self, manipulate: ManipulateEntity) -> Result<bool> {
-        debug!("send manipulate client type:{:?}", self.sub_module_type);
-        match self.manipulate_client.send(manipulate.create_req()).await? {
-            RespCode::Success => {
-                return Ok(true);
-            }
-            other_resp_code => {
-                debug!(
-                    "{:?} send_manipulate error: {:?}",
-                    self.name, other_resp_code
-                );
-            }
-        }
-        Ok(false)
+    pub async fn send_manipulate(&mut self, manipulate: ManipulateEntity) -> Result<RespCode> {
+        debug!("Send Manipulate Client Type: {:?}", self.sub_module_type);
+        Ok(self.manipulate_client.send(manipulate.create_req()).await?)
     }
 }

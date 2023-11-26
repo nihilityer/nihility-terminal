@@ -4,6 +4,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use anyhow::{anyhow, Result};
 use nihility_common::manipulate::ManipulateType;
+use nihility_common::response_code::RespCode;
 use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::try_join;
 use tracing::{debug, error, info, warn};
@@ -31,15 +32,15 @@ pub async fn core_start(
     let module_map = Arc::new(tokio::sync::Mutex::new(HashMap::<String, Submodule>::new()));
     let encoder = encoder::encoder_builder(&core_config.encoder)?;
 
-    let mut encode_size = 0;
     if let Ok(locked_encoder) = encoder.lock() {
-        encode_size = locked_encoder.encode_size();
+        let encode_size = locked_encoder.encode_size();
+        core_config.module_manager.config_map.insert(
+            instruct_manager::ENCODE_SIZE_FIELD.to_string(),
+            encode_size.to_string(),
+        );
+    } else {
+        return Err(anyhow!("Lock Instruct Encoder Error"));
     }
-
-    core_config.module_manager.config_map.insert(
-        instruct_manager::ENCODE_SIZE_FIELD.to_string(),
-        encode_size.to_string(),
-    );
 
     let built_instruct_manager =
         instruct_manager::build_instruct_manager(core_config.module_manager).await?;
@@ -80,14 +81,18 @@ async fn manager_heartbeat(
 ) -> Result<()> {
     loop {
         tokio::time::sleep(Duration::from_secs(HEARTBEAT_TIME)).await;
-        debug!("Make sure the module heartbeat is normal");
+        debug!("Make Sure The Submodule Heartbeat Is Normal");
         let mut locked_module_map = module_map.lock().await;
         let now_timestamp = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs();
         for (_, module) in locked_module_map.iter_mut() {
             if now_timestamp - module.heartbeat_time > 2 * HEARTBEAT_TIME {
-                info!("Submodule {:?} heartbeat exception", &module.name);
-                let operate = ModuleOperate::create_by_submodule(&module, OperateType::OFFLINE)?;
-                module_operate_sender.send(operate).await?;
+                info!("Submodule {:?} Heartbeat Exception", &module.name);
+                module_operate_sender
+                    .send(ModuleOperate::create_by_submodule(
+                        &module,
+                        OperateType::OFFLINE,
+                    ))
+                    .await?;
             }
         }
     }
@@ -104,9 +109,9 @@ async fn manager_manipulate(
     module_map: Arc<tokio::sync::Mutex<HashMap<String, Submodule>>>,
     mut manipulate_receiver: Receiver<ManipulateEntity>,
 ) -> Result<()> {
-    debug!("manipulate_receiver start recv");
+    info!("Start Receive Manipulate");
     while let Some(manipulate) = manipulate_receiver.recv().await {
-        info!("get manipulate：{:?}", &manipulate);
+        info!("Get Manipulate：{:?}", &manipulate);
         match manipulate.manipulate_type {
             ManipulateType::OfflineType => {
                 error!("Offline Type Manipulate Cannot Forward")
@@ -115,10 +120,20 @@ async fn manager_manipulate(
         }
         let mut locked_module_map = module_map.lock().await;
         if let Some(module) = locked_module_map.get_mut(manipulate.use_module_name.as_str()) {
-            module.send_manipulate(manipulate).await?;
+            match module.send_manipulate(manipulate).await {
+                Ok(RespCode::Success) => {
+                    debug!("Send Manipulate Success");
+                }
+                Ok(other_resp_code) => {
+                    error!("Send Manipulate Fail, Resp Code: {:?}", other_resp_code);
+                }
+                Err(e) => {
+                    error!("Send Manipulate Error: {}", e);
+                }
+            }
         } else {
             error!(
-                "use module name {:?} cannot find in register sub module",
+                "Expect Use Submodule Name {:?} Cannot Find In Register Submodule",
                 manipulate.use_module_name.to_string()
             )
         }
@@ -139,9 +154,9 @@ async fn manager_instruct(
     instruct_encoder: Arc<Mutex<Box<dyn Encoder + Send>>>,
     mut instruct_receiver: Receiver<InstructEntity>,
 ) -> Result<()> {
-    debug!("instruct_receiver start recv");
+    info!("Start Receive Instruct");
     while let Some(instruct) = instruct_receiver.recv().await {
-        info!("get instruct：{:?}", &instruct);
+        info!("Get Instruct：{:?}", &instruct);
         let mut encoded_instruct: Vec<f32> = Vec::new();
         if let Ok(mut encoder) = instruct_encoder.lock() {
             encoded_instruct.append(encoder.encode(instruct.instruct.to_string())?.as_mut());
@@ -156,13 +171,22 @@ async fn manager_instruct(
 
                 let mut modules = module_map.lock().await;
                 if let Some(module) = modules.get_mut(module_name.as_str()) {
-                    let send_resp = module.send_instruct(instruct).await?;
-                    debug!("send_instruct result: {:?}", send_resp);
+                    match module.send_instruct(instruct).await {
+                        Ok(RespCode::Success) => {
+                            debug!("Forward Instruct Success");
+                        }
+                        Ok(other_resp_code) => {
+                            error!("Forward Instruct Fail, Resp Code: {:?}", other_resp_code);
+                        }
+                        Err(e) => {
+                            error!("Forward Instruct Error: {}", e);
+                        }
+                    }
                     continue;
                 }
             }
             Err(e) => {
-                warn!("{}", e.to_string());
+                warn!("Match Instruct Handler Error: {}", e);
             }
         }
     }
@@ -180,7 +204,7 @@ async fn manager_module(
     instruct_encoder: Arc<Mutex<Box<dyn Encoder + Send>>>,
     mut module_operate_receiver: Receiver<ModuleOperate>,
 ) -> Result<()> {
-    debug!("module_receiver start recv");
+    info!("Start Receive ModuleOperate");
     while let Some(module_operate) = module_operate_receiver.recv().await {
         match module_operate.operate_type {
             OperateType::REGISTER => {
@@ -196,25 +220,42 @@ async fn manager_module(
                         info!("Register Submodule {:?} success", register_submodule_name);
                     }
                     Err(e) => {
-                        error!("{}", e)
+                        error!("Register Submodule Error: {}", e)
                     }
                 }
             }
             OperateType::OFFLINE => {
-                offline_submodule(module_map.clone(), qdrant_client.clone(), module_operate)
-                    .await?;
+                match offline_submodule(module_map.clone(), qdrant_client.clone(), module_operate)
+                    .await
+                {
+                    Ok(offline_submodule_name) => {
+                        info!("Offline Submodule {:?} success", offline_submodule_name);
+                    }
+                    Err(e) => {
+                        error!("Offline Submodule Error: {}", e)
+                    }
+                }
             }
             OperateType::HEARTBEAT => {
+                // 此方法内部抛出的错误无法忽略
                 update_submodule_heartbeat(module_map.clone(), module_operate).await?;
             }
             OperateType::UPDATE => {
-                update_submodule(
+                match update_submodule(
                     module_map.clone(),
                     qdrant_client.clone(),
                     instruct_encoder.clone(),
                     module_operate,
                 )
-                .await?;
+                .await
+                {
+                    Ok(update_submodule_name) => {
+                        info!("Update Submodule {:?} success", update_submodule_name);
+                    }
+                    Err(e) => {
+                        error!("Update Submodule Error: {}", e)
+                    }
+                }
             }
         }
     }
@@ -227,7 +268,7 @@ async fn update_submodule(
     qdrant_client: Arc<tokio::sync::Mutex<Box<dyn InstructManager + Send>>>,
     instruct_encoder: Arc<Mutex<Box<dyn Encoder + Send>>>,
     module_operate: ModuleOperate,
-) -> Result<()> {
+) -> Result<String> {
     info!(
         "Update Submodule {:?} Default Instruct",
         &module_operate.name
@@ -302,7 +343,7 @@ async fn update_submodule(
             module.default_instruct_map = update_instruct_map;
         }
     }
-    Ok(())
+    Ok(module_operate.name.to_string())
 }
 
 /// 更新子模块心跳时间
@@ -324,7 +365,7 @@ async fn offline_submodule(
     module_map: Arc<tokio::sync::Mutex<HashMap<String, Submodule>>>,
     qdrant_client: Arc<tokio::sync::Mutex<Box<dyn InstructManager + Send>>>,
     module_operate: ModuleOperate,
-) -> Result<()> {
+) -> Result<String> {
     info!("Offline Submodule {:?}", &module_operate.name);
     let mut point_ids = Vec::<String>::new();
     {
@@ -338,12 +379,12 @@ async fn offline_submodule(
     }
     let locked_instruct_manager = qdrant_client.lock().await;
     locked_instruct_manager.remove_points(point_ids).await?;
-    Ok(())
+    Ok(module_operate.name.to_string())
 }
 
 /// 注册子模块处理
 async fn register_submodule(
-    module_map: Arc<tokio::sync::Mutex<HashMap<String, Submodule>>>,
+    submodule_map: Arc<tokio::sync::Mutex<HashMap<String, Submodule>>>,
     qdrant_client: Arc<tokio::sync::Mutex<Box<dyn InstructManager + Send>>>,
     instruct_encoder: Arc<Mutex<Box<dyn Encoder + Send>>>,
     module_operate: ModuleOperate,
@@ -354,13 +395,13 @@ async fn register_submodule(
     let mut points = Vec::<PointPayload>::new();
     // 此处操作需要同时获取两个锁，所以只有都获取时才进行操作，否则释放锁等待下次获取锁
     loop {
-        let mut locked_module_map = module_map.lock().await;
+        let mut locked_module_map = submodule_map.lock().await;
         match instruct_encoder.try_lock() {
             Ok(mut locked_instruct_encoder) => {
-                debug!("lock locked_module_map, locked_instruct_encoder success");
+                debug!("Lock (submodule_map, instruct_encoder) Success");
                 if let Some(_) = locked_module_map.get(submodule.name.as_str()) {
                     return Err(anyhow!(
-                        "The current submodule {:?} is registered",
+                        "The Current Submodule {:?} Is Registered",
                         &submodule.name
                     ));
                 }
