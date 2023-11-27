@@ -5,8 +5,8 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use anyhow::{anyhow, Result};
 use nihility_common::manipulate::ManipulateType;
 use nihility_common::response_code::RespCode;
-use tokio::spawn;
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender, WeakUnboundedSender};
+use tokio::{select, spawn};
 use tokio_util::sync::CancellationToken;
 use tracing::{debug, error, info, warn};
 use uuid::Uuid;
@@ -75,9 +75,17 @@ pub async fn core_start(
     let heartbeat_cancellation_token = cancellation_token.clone();
     let heartbeat_shutdown_sender = shutdown_sender.clone();
     spawn(async move {
-        if let Err(e) = manager_heartbeat(heartbeat_submodule_map, module_operate_sender).await {
-            error!("Heartbeat Manager Error: {}", e);
-            heartbeat_cancellation_token.cancel();
+        select! {
+            heartbeat_result = manager_heartbeat(heartbeat_submodule_map, module_operate_sender) => {
+                match heartbeat_result {
+                    Err(e) => {
+                        error!("Heartbeat Manager Error: {}", e);
+                        heartbeat_cancellation_token.cancel();
+                    }
+                    _ => {}
+                }
+            },
+            _ = heartbeat_cancellation_token.cancelled() => {}
         }
         heartbeat_shutdown_sender
             .send("Heartbeat Manager".to_string())
@@ -130,10 +138,6 @@ async fn manager_heartbeat(
     module_operate_sender: WeakUnboundedSender<ModuleOperate>,
 ) -> Result<()> {
     loop {
-        if let None = module_operate_sender.upgrade() {
-            warn!("Other module_operate_sender Is Close");
-            return Ok(());
-        }
         tokio::time::sleep(Duration::from_secs(HEARTBEAT_TIME)).await;
         debug!("Make Sure The Submodule Heartbeat Is Normal");
         let mut locked_submodule_map = submodule_map.lock().await;

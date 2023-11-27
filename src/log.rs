@@ -31,7 +31,7 @@ impl Log {
             }
             other => {
                 return Err(anyhow!(
-                    "Log Module Config Error : Level {other} is not support"
+                    "Log Module Config Error : Level {other} Is Not Support"
                 ));
             }
         }
@@ -50,7 +50,7 @@ impl Log {
             .with_timer(timer)
             .finish();
         tracing::subscriber::set_global_default(subscriber)?;
-        tracing::debug!("log subscriber init success");
+        tracing::debug!("Log Subscriber Init Success");
 
         Ok(())
     }

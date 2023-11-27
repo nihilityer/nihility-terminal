@@ -22,8 +22,8 @@ impl Encoder for SentenceTransformers {
     {
         let onnx_model_path = format!("{}/{}/model.onnx", model_path, model_name);
         let tokenizers_config_path = format!("{}/{}/tokenizer.json", model_path, model_name);
-        debug!("onnx_model_path:{}", &onnx_model_path);
-        debug!("tokenizers_config_path:{}", &tokenizers_config_path);
+        debug!("Use onnx_model_path: {}", &onnx_model_path);
+        debug!("Use tokenizers_config_path: {}", &tokenizers_config_path);
         ort::init()
             .with_execution_providers([CPUExecutionProvider::default().build()])
             .commit()?;
@@ -42,7 +42,7 @@ impl Encoder for SentenceTransformers {
 
     fn encode(&mut self, input: String) -> Result<Vec<f32>> {
         let encoding = self.tokenizer.encode(input, false).unwrap();
-        debug!("encoding: {:?}", &encoding);
+        debug!("Encoding: {:?}", &encoding);
 
         let input_ids = Array1::from_iter(
             encoding
@@ -79,7 +79,7 @@ impl Encoder for SentenceTransformers {
             "token_type_ids" => token_type_ids,
             "attention_mask" => attention_mask,
         ]?;
-        debug!("onnx inputs: {:?}", &inputs);
+        debug!("Onnx Inputs: {:?}", &inputs);
         let outputs = self.ort_session.run(inputs)?;
         let generated_tokens = outputs[0].extract_tensor::<f32>()?;
         let encode_result = generated_tokens.view();
@@ -87,7 +87,7 @@ impl Encoder for SentenceTransformers {
 
         if let Some(result) = encode_result.mean_axis(Axis(0)) {
             let result = result.iter().cloned().into_iter().collect::<Vec<f32>>();
-            debug!("encode result len:{:?}", result.len());
+            debug!("Encode Result Len:{:?}", result.len());
             return Ok(result);
         } else {
             return Err(anyhow!("Encode Result Transform Error"));

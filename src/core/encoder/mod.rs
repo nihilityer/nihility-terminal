@@ -25,7 +25,7 @@ pub trait Encoder {
 pub fn encoder_builder(
     encoder_config: &EncoderConfig,
 ) -> Result<Arc<Mutex<Box<dyn Encoder + Send + Sync>>>> {
-    info!("use encoder type: {:?}", &encoder_config.encoder_type);
+    info!("Use Encoder Type: {:?}", &encoder_config.encoder_type);
     return match encoder_config.encoder_type {
         EncoderType::SentenceTransformers => {
             let encoder = sentence_transformers::SentenceTransformers::init(
