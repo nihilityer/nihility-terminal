@@ -5,6 +5,7 @@ use nihility_common::instruct::{InstructReq, InstructType};
 pub struct InstructEntity {
     pub instruct_type: InstructType,
     pub instruct: String,
+    pub receive_manipulate_submodule: String,
 }
 
 impl InstructEntity {
@@ -13,6 +14,7 @@ impl InstructEntity {
         InstructEntity {
             instruct_type: req.instruct_type(),
             instruct: req.instruct,
+            receive_manipulate_submodule: req.receive_manipulate_submodule,
         }
     }
 
@@ -21,6 +23,7 @@ impl InstructEntity {
         InstructReq {
             instruct_type: self.instruct_type.into(),
             instruct: self.instruct,
+            receive_manipulate_submodule: self.receive_manipulate_submodule,
         }
     }
 }

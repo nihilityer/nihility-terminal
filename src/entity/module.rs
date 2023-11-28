@@ -5,10 +5,10 @@ use anyhow::{anyhow, Result};
 use nihility_common::instruct::instruct_client::InstructClient;
 use nihility_common::manipulate::manipulate_client::ManipulateClient;
 use nihility_common::response_code::RespCode;
-use nihility_common::submodule::{SubmoduleReq, SubmoduleType};
-use tonic::transport::Channel;
+use nihility_common::submodule::{ReceiveType, SubmoduleReq, SubmoduleType};
 use tracing::debug;
 
+use crate::communicat::mock::{MockInstructClient, MockManipulateClient};
 #[cfg(unix)]
 use crate::communicat::pipe::{PipeUnixInstructClient, PipeUnixManipulateClient};
 #[cfg(windows)]
@@ -48,6 +48,7 @@ pub struct ModuleOperate {
     pub name: String,
     pub default_instruct: Vec<String>,
     pub submodule_type: SubmoduleType,
+    pub receive_type: ReceiveType,
     pub conn_params: HashMap<String, String>,
     pub operate_type: OperateType,
 }
@@ -57,6 +58,7 @@ pub struct Submodule {
     pub name: String,
     pub default_instruct_map: HashMap<String, String>,
     pub sub_module_type: SubmoduleType,
+    pub receive_type: ReceiveType,
     pub heartbeat_time: u64,
     instruct_client: Box<dyn SendInstructOperate + Send>,
     manipulate_client: Box<dyn SendManipulateOperate + Send>,
@@ -69,6 +71,7 @@ impl ModuleOperate {
             name: req.name.clone(),
             default_instruct: req.default_instruct.clone(),
             submodule_type: req.clone().submodule_type(),
+            receive_type: req.clone().receive_type(),
             conn_params: req.conn_params.clone(),
             operate_type,
         }
@@ -86,6 +89,7 @@ impl ModuleOperate {
             name: submodule.name.to_string(),
             default_instruct,
             submodule_type: submodule.sub_module_type.clone(),
+            receive_type: submodule.receive_type.clone(),
             conn_params: HashMap::<String, String>::new(),
             operate_type,
         }
@@ -135,14 +139,8 @@ impl Submodule {
                 MANIPULATE_PIPE_FIELD
             ));
         }
-        let instruct_path = operate
-            .conn_params
-            .get(INSTRUCT_PIPE_FIELD)
-            .unwrap();
-        let manipulate_path = operate
-            .conn_params
-            .get(MANIPULATE_PIPE_FIELD)
-            .unwrap();
+        let instruct_path = operate.conn_params.get(INSTRUCT_PIPE_FIELD).unwrap();
+        let manipulate_path = operate.conn_params.get(MANIPULATE_PIPE_FIELD).unwrap();
         let instruct_client = Box::new(PipeUnixInstructClient::init(instruct_path)?);
         let manipulate_client = Box::new(PipeUnixManipulateClient::init(manipulate_path)?);
         let mut instruct_map = HashMap::<String, String>::new();
@@ -164,7 +162,10 @@ impl Submodule {
     /// 创建WindowsNamedPipe通信的子模块
     #[cfg(windows)]
     fn create_windows_named_pipe_module(operate: ModuleOperate) -> Result<Submodule> {
-        debug!("Start Create Windows Named Pipe Submodule By {:?}", &operate);
+        debug!(
+            "Start Create Windows Named Pipe Submodule By {:?}",
+            &operate
+        );
         if let None = operate.conn_params.get(INSTRUCT_WINDOWS_NAMED_PIPE_FIELD) {
             return Err(anyhow!(
                 "Create {:?} Type Submodule Error, ModuleOperate Missing {:?} Filed",
@@ -198,11 +199,15 @@ impl Submodule {
             instruct_map.insert(instruct, String::new());
         }
         let timestamp = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs();
-        debug!("Create Windows Named Pipe Submodule {:?} Success", &operate.name);
+        debug!(
+            "Create Windows Named Pipe Submodule {:?} Success",
+            &operate.name
+        );
         Ok(Submodule {
             name: operate.name,
             default_instruct_map: instruct_map,
             sub_module_type: operate.submodule_type,
+            receive_type: operate.receive_type,
             heartbeat_time: timestamp,
             instruct_client,
             manipulate_client,
@@ -222,10 +227,26 @@ impl Submodule {
             ));
         }
         let grpc_addr = operate.conn_params.get(GRPC_CONN_ADDR_FIELD).unwrap();
-        let instruct_client: Box<InstructClient<Channel>> =
-            Box::new(InstructClient::connect(grpc_addr.to_string()).await?);
-        let manipulate_client: Box<ManipulateClient<Channel>> =
-            Box::new(ManipulateClient::connect(grpc_addr.to_string()).await?);
+
+        let mut instruct_client: Box<dyn SendInstructOperate + Send> =
+            Box::new(MockInstructClient::default());
+        let mut manipulate_client: Box<dyn SendManipulateOperate + Send> =
+            Box::new(MockManipulateClient::default());
+        match operate.receive_type {
+            ReceiveType::DefaultType => {
+                instruct_client = Box::new(InstructClient::connect(grpc_addr.to_string()).await?);
+                manipulate_client =
+                    Box::new(ManipulateClient::connect(grpc_addr.to_string()).await?);
+            }
+            ReceiveType::JustInstructType => {
+                instruct_client = Box::new(InstructClient::connect(grpc_addr.to_string()).await?);
+            }
+            ReceiveType::JustManipulateType => {
+                manipulate_client =
+                    Box::new(ManipulateClient::connect(grpc_addr.to_string()).await?);
+            }
+        }
+
         let mut instruct_map = HashMap::<String, String>::new();
         for instruct in operate.default_instruct {
             instruct_map.insert(instruct, String::new());
@@ -236,6 +257,7 @@ impl Submodule {
             name: operate.name,
             default_instruct_map: instruct_map,
             sub_module_type: operate.submodule_type,
+            receive_type: operate.receive_type,
             heartbeat_time: timestamp,
             instruct_client,
             manipulate_client,
