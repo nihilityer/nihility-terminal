@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use anyhow::{anyhow, Result};
@@ -7,11 +6,10 @@ use tokio::sync::mpsc::UnboundedReceiver;
 use tracing::{debug, error, info};
 use uuid::Uuid;
 
-use crate::core::encoder::Encoder;
-use crate::core::instruct_manager::{InstructManager, PointPayload};
+use crate::core::instruct_manager::PointPayload;
 use crate::entity::module::{ModuleOperate, OperateType, Submodule};
 
-use super::SUBMODULE_MAP;
+use super::{INSTRUCT_ENCODER, INSTRUCT_MANAGER, SUBMODULE_MAP};
 
 /// 负责管理子模块
 ///
@@ -19,70 +17,46 @@ use super::SUBMODULE_MAP;
 ///
 /// 2、特定错误进行重试或只通知
 pub(super) async fn manager_submodule(
-    instruct_manager: Arc<tokio::sync::Mutex<Box<dyn InstructManager + Send + Sync>>>,
-    instruct_encoder: Arc<Mutex<Box<dyn Encoder + Send + Sync>>>,
     mut module_operate_receiver: UnboundedReceiver<ModuleOperate>,
 ) -> Result<()> {
     info!("Start Receive ModuleOperate");
     while let Some(module_operate) = module_operate_receiver.recv().await {
         match module_operate.operate_type {
-            OperateType::REGISTER => {
-                match register_submodule(
-                    instruct_manager.clone(),
-                    instruct_encoder.clone(),
-                    module_operate,
-                )
-                .await
-                {
-                    Ok(register_submodule_name) => {
-                        info!("Register Submodule {:?} success", register_submodule_name);
-                    }
-                    Err(e) => {
-                        error!("Register Submodule Error: {}", e)
-                    }
+            OperateType::REGISTER => match register_submodule(module_operate).await {
+                Ok(register_submodule_name) => {
+                    info!("Register Submodule {:?} success", register_submodule_name);
                 }
-            }
-            OperateType::OFFLINE => {
-                match offline_submodule(instruct_manager.clone(), module_operate).await {
-                    Ok(offline_submodule_name) => {
-                        info!("Offline Submodule {:?} success", offline_submodule_name);
-                    }
-                    Err(e) => {
-                        error!("Offline Submodule Error: {}", e)
-                    }
+                Err(e) => {
+                    error!("Register Submodule Error: {}", e)
                 }
-            }
+            },
+            OperateType::OFFLINE => match offline_submodule(module_operate).await {
+                Ok(offline_submodule_name) => {
+                    info!("Offline Submodule {:?} success", offline_submodule_name);
+                }
+                Err(e) => {
+                    error!("Offline Submodule Error: {}", e)
+                }
+            },
             OperateType::HEARTBEAT => {
                 // 此方法内部抛出的错误无法忽略
                 update_submodule_heartbeat(module_operate).await?;
             }
-            OperateType::UPDATE => {
-                match update_submodule(
-                    instruct_manager.clone(),
-                    instruct_encoder.clone(),
-                    module_operate,
-                )
-                .await
-                {
-                    Ok(update_submodule_name) => {
-                        info!("Update Submodule {:?} success", update_submodule_name);
-                    }
-                    Err(e) => {
-                        error!("Update Submodule Error: {}", e)
-                    }
+            OperateType::UPDATE => match update_submodule(module_operate).await {
+                Ok(update_submodule_name) => {
+                    info!("Update Submodule {:?} success", update_submodule_name);
                 }
-            }
+                Err(e) => {
+                    error!("Update Submodule Error: {}", e)
+                }
+            },
         }
     }
     Ok(())
 }
 
 /// 更新子模块指令设置，如果要更新连接设置应该先离线然后注册，而不是发送更新操作
-async fn update_submodule(
-    instruct_manager: Arc<tokio::sync::Mutex<Box<dyn InstructManager + Send + Sync>>>,
-    instruct_encoder: Arc<Mutex<Box<dyn Encoder + Send + Sync>>>,
-    module_operate: ModuleOperate,
-) -> Result<String> {
+async fn update_submodule(module_operate: ModuleOperate) -> Result<String> {
     info!(
         "Update Submodule {:?} Default Instruct",
         &module_operate.name
@@ -120,7 +94,7 @@ async fn update_submodule(
     }
     // 将新增指令编码
     loop {
-        if let Ok(mut lock_encoder) = instruct_encoder.try_lock() {
+        if let Ok(mut lock_encoder) = INSTRUCT_ENCODER.try_lock() {
             for (instruct, _) in new_instruct.clone() {
                 new_instruct.insert(
                     instruct.to_string(),
@@ -142,7 +116,7 @@ async fn update_submodule(
                 encode: encode_result.clone(),
             });
         }
-        let locked_instruct_manager = instruct_manager.lock().await;
+        let locked_instruct_manager = INSTRUCT_MANAGER.lock().await;
         locked_instruct_manager
             .append_points(module_operate.name.to_string(), insert_points)
             .await?;
@@ -172,10 +146,7 @@ async fn update_submodule_heartbeat(module_operate: ModuleOperate) -> Result<()>
 }
 
 /// 离线子模块处理
-async fn offline_submodule(
-    instruct_manager: Arc<tokio::sync::Mutex<Box<dyn InstructManager + Send + Sync>>>,
-    module_operate: ModuleOperate,
-) -> Result<String> {
+async fn offline_submodule(module_operate: ModuleOperate) -> Result<String> {
     info!("Offline Submodule {:?}", &module_operate.name);
     let mut point_ids = Vec::<String>::new();
     {
@@ -187,7 +158,7 @@ async fn offline_submodule(
             locked_submodule_map.remove(module_operate.name.as_str());
         }
     }
-    instruct_manager
+    INSTRUCT_MANAGER
         .lock()
         .await
         .remove_points(point_ids)
@@ -196,11 +167,7 @@ async fn offline_submodule(
 }
 
 /// 注册子模块处理
-async fn register_submodule(
-    instruct_manager: Arc<tokio::sync::Mutex<Box<dyn InstructManager + Send + Sync>>>,
-    instruct_encoder: Arc<Mutex<Box<dyn Encoder + Send + Sync>>>,
-    module_operate: ModuleOperate,
-) -> Result<String> {
+async fn register_submodule(module_operate: ModuleOperate) -> Result<String> {
     info!("start register model：{:?}", &module_operate.name);
     let register_submodule_name = module_operate.name.to_string();
     let mut submodule = Submodule::create_by_operate(module_operate).await?;
@@ -208,7 +175,7 @@ async fn register_submodule(
     // 此处操作需要同时获取两个锁，所以只有都获取时才进行操作，否则释放锁等待下次获取锁
     loop {
         let mut locked_submodule_map = SUBMODULE_MAP.lock().await;
-        match instruct_encoder.try_lock() {
+        match INSTRUCT_ENCODER.try_lock() {
             Ok(mut locked_instruct_encoder) => {
                 debug!("Lock (submodule_map, instruct_encoder) Success");
                 if let Some(_) = locked_submodule_map.get(submodule.name.as_str()) {
@@ -238,7 +205,7 @@ async fn register_submodule(
             }
         }
     }
-    instruct_manager
+    INSTRUCT_MANAGER
         .lock()
         .await
         .append_points(register_submodule_name.to_string(), points)

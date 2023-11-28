@@ -6,7 +6,7 @@ use ort::{inputs, CPUExecutionProvider, GraphOptimizationLevel, Session};
 use tokenizers::Tokenizer;
 use tracing::debug;
 
-use crate::core::encoder::Encoder;
+use crate::core::encoder::InstructEncoder;
 
 const ENCODE_SIZE: u64 = 512;
 
@@ -15,7 +15,7 @@ pub struct SentenceTransformers {
     pub tokenizer: Tokenizer,
 }
 
-impl Encoder for SentenceTransformers {
+impl InstructEncoder for SentenceTransformers {
     fn init(model_path: String, model_name: String) -> Result<Self>
     where
         Self: Sized + Send + Sync,

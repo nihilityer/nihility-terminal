@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use std::sync::Arc;
 
 use anyhow::Result;
 use async_trait::async_trait;
@@ -8,6 +7,7 @@ use tracing::info;
 use crate::config::{InstructManagerConfig, InstructManagerType};
 
 mod grpc_qdrant;
+pub mod mock;
 
 pub const ENCODE_SIZE_FIELD: &str = "encode_size";
 
@@ -37,14 +37,12 @@ pub trait InstructManager {
 
 pub async fn build_instruct_manager(
     config: InstructManagerConfig,
-) -> Result<Arc<tokio::sync::Mutex<Box<dyn InstructManager + Send + Sync>>>> {
+) -> Result<Box<dyn InstructManager + Send + Sync>> {
     info!("Module Manager Type: {:?}", &config.manager_type);
     match config.manager_type {
         InstructManagerType::GrpcQdrant => {
             let instruct_manager = grpc_qdrant::GrpcQdrant::init(config.config_map.clone()).await?;
-            Ok(Arc::new(tokio::sync::Mutex::new(Box::new(
-                instruct_manager,
-            ))))
+            Ok(Box::new(instruct_manager))
         }
     }
 }

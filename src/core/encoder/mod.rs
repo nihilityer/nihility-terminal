@@ -1,15 +1,13 @@
-use std::sync::Arc;
-use std::sync::Mutex;
-
 use anyhow::Result;
 use tracing::info;
 
 use crate::config::{EncoderConfig, EncoderType};
 
+pub mod mock;
 mod sentence_transformers;
 
 /// 所有指令编码模块全部实现此特征
-pub trait Encoder {
+pub trait InstructEncoder {
     /// 初始化编码模块
     fn init(model_path: String, model_name: String) -> Result<Self>
     where
@@ -22,9 +20,7 @@ pub trait Encoder {
     fn encode_size(&self) -> u64;
 }
 
-pub fn encoder_builder(
-    encoder_config: &EncoderConfig,
-) -> Result<Arc<Mutex<Box<dyn Encoder + Send + Sync>>>> {
+pub fn encoder_builder(encoder_config: &EncoderConfig) -> Result<Box<dyn InstructEncoder + Send + Sync>> {
     info!("Use Encoder Type: {:?}", &encoder_config.encoder_type);
     return match encoder_config.encoder_type {
         EncoderType::SentenceTransformers => {
@@ -32,7 +28,7 @@ pub fn encoder_builder(
                 encoder_config.model_path.to_string(),
                 encoder_config.model_name.to_string(),
             )?;
-            Ok(Arc::new(Mutex::new(Box::new(encoder))))
+            Ok(Box::new(encoder))
         }
     };
 }
