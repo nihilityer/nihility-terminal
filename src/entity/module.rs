@@ -60,8 +60,8 @@ pub struct Submodule {
     pub sub_module_type: SubmoduleType,
     pub receive_type: ReceiveType,
     pub heartbeat_time: u64,
-    instruct_client: Box<dyn SendInstructOperate + Send>,
-    manipulate_client: Box<dyn SendManipulateOperate + Send>,
+    instruct_client: Box<dyn SendInstructOperate + Send + Sync>,
+    manipulate_client: Box<dyn SendManipulateOperate + Send + Sync>,
 }
 
 impl ModuleOperate {
@@ -228,9 +228,9 @@ impl Submodule {
         }
         let grpc_addr = operate.conn_params.get(GRPC_CONN_ADDR_FIELD).unwrap();
 
-        let mut instruct_client: Box<dyn SendInstructOperate + Send> =
+        let mut instruct_client: Box<dyn SendInstructOperate + Send + Sync> =
             Box::new(MockInstructClient::default());
-        let mut manipulate_client: Box<dyn SendManipulateOperate + Send> =
+        let mut manipulate_client: Box<dyn SendManipulateOperate + Send + Sync> =
             Box::new(MockManipulateClient::default());
         match operate.receive_type {
             ReceiveType::DefaultType => {
