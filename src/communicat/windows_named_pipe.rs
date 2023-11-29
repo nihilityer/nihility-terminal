@@ -11,7 +11,6 @@ use tokio::net::windows::named_pipe::{ClientOptions, NamedPipeClient};
 use tokio::net::windows::named_pipe::{NamedPipeServer, ServerOptions};
 use tokio::spawn;
 use tokio::sync::mpsc::UnboundedSender;
-use tokio_util::sync::CancellationToken;
 use tracing::{debug, error, info};
 
 use crate::communicat::{SendInstructOperate, SendManipulateOperate};
@@ -19,15 +18,15 @@ use crate::config::WindowsNamedPipesConfig;
 use crate::entity::instruct::InstructEntity;
 use crate::entity::manipulate::ManipulateEntity;
 use crate::entity::module::{ModuleOperate, OperateType};
+use crate::CANCELLATION_TOKEN;
 
 #[cfg(windows)]
 pub struct WindowsNamedPipeProcessor;
 
 #[cfg(windows)]
 impl WindowsNamedPipeProcessor {
-    pub async fn start(
+    pub fn start_processor(
         windows_named_pipe_config: WindowsNamedPipesConfig,
-        cancellation_token: CancellationToken,
         module_operate_sender: UnboundedSender<ModuleOperate>,
         instruct_sender: UnboundedSender<InstructEntity>,
         manipulate_sender: UnboundedSender<ManipulateEntity>,
@@ -80,96 +79,71 @@ impl WindowsNamedPipeProcessor {
             .first_pipe_instance(true)
             .create(manipulate_pipe_name)?;
 
-        let register_cancellation_token = cancellation_token.clone();
         let register_module_operate_sender = module_operate_sender.clone();
         spawn(async move {
-            if let Err(e) = Self::register_named_pipe_processor(
-                register_cancellation_token.clone(),
-                register_module_operate_sender,
-                register_server,
-            )
-            .await
+            if let Err(e) =
+                Self::register_named_pipe_processor(register_module_operate_sender, register_server)
+                    .await
             {
                 error!("register_named_pipe_processor Error: {}", e);
-                register_cancellation_token.cancel();
+                CANCELLATION_TOKEN.cancel();
             }
             info!("register_named_pipe_processor Exit");
         });
 
-        let offline_cancellation_token = cancellation_token.clone();
         let offline_module_operate_sender = module_operate_sender.clone();
         spawn(async move {
-            if let Err(e) = Self::offline_named_pipe_processor(
-                offline_cancellation_token.clone(),
-                offline_module_operate_sender,
-                offline_server,
-            )
-            .await
+            if let Err(e) =
+                Self::offline_named_pipe_processor(offline_module_operate_sender, offline_server)
+                    .await
             {
                 error!("offline_named_pipe_processor Error: {}", e);
-                offline_cancellation_token.cancel();
+                CANCELLATION_TOKEN.cancel();
             }
             info!("offline_named_pipe_processor Exit");
         });
 
-        let heartbeat_cancellation_token = cancellation_token.clone();
         let heartbeat_module_operate_sender = module_operate_sender.clone();
         spawn(async move {
             if let Err(e) = Self::heartbeat_named_pipe_processor(
-                heartbeat_cancellation_token.clone(),
                 heartbeat_module_operate_sender,
                 heartbeat_server,
             )
             .await
             {
                 error!("heartbeat_named_pipe_processor Error: {}", e);
-                heartbeat_cancellation_token.cancel();
+                CANCELLATION_TOKEN.cancel();
             }
             info!("heartbeat_named_pipe_processor Exit");
         });
 
-        let update_cancellation_token = cancellation_token.clone();
         let update_module_operate_sender = module_operate_sender.clone();
         spawn(async move {
-            if let Err(e) = Self::update_named_pipe_processor(
-                update_cancellation_token.clone(),
-                update_module_operate_sender,
-                update_server,
-            )
-            .await
+            if let Err(e) =
+                Self::update_named_pipe_processor(update_module_operate_sender, update_server).await
             {
                 error!("update_named_pipe_processor Error: {}", e);
-                update_cancellation_token.cancel();
+                CANCELLATION_TOKEN.cancel();
             }
             info!("update_named_pipe_processor Exit");
         });
 
-        let instruct_cancellation_token = cancellation_token.clone();
         spawn(async move {
-            if let Err(e) = Self::instruct_named_pipe_processor(
-                instruct_cancellation_token.clone(),
-                instruct_sender,
-                instruct_server,
-            )
-            .await
+            if let Err(e) =
+                Self::instruct_named_pipe_processor(instruct_sender, instruct_server).await
             {
                 error!("instruct_named_pipe_processor Error: {}", e);
-                instruct_cancellation_token.cancel();
+                CANCELLATION_TOKEN.cancel();
             }
             info!("instruct_named_pipe_processor Exit");
         });
 
-        let manipulate_cancellation_token = cancellation_token.clone();
         spawn(async move {
-            if let Err(e) = Self::manipulate_named_pipe_processor(
-                manipulate_cancellation_token.clone(),
-                manipulate_sender,
-                manipulate_server,
-            )
-            .await
+            if let Err(e) =
+                Self::manipulate_named_pipe_processor(manipulate_sender, manipulate_server).await
             {
                 error!("manipulate_named_pipe_processor Error: {}", e);
-                manipulate_cancellation_token.cancel();
+                CANCELLATION_TOKEN.cancel();
             }
             info!("manipulate_named_pipe_processor Exit");
         });
@@ -177,12 +151,11 @@ impl WindowsNamedPipeProcessor {
     }
 
     async fn register_named_pipe_processor(
-        cancellation_token: CancellationToken,
         module_operate_sender: UnboundedSender<ModuleOperate>,
         register_server: NamedPipeServer,
     ) -> Result<()> {
         loop {
-            if cancellation_token.is_cancelled() {
+            if CANCELLATION_TOKEN.is_cancelled() {
                 return Ok(());
             }
             register_server.readable().await?;
@@ -206,12 +179,11 @@ impl WindowsNamedPipeProcessor {
     }
 
     async fn offline_named_pipe_processor(
-        cancellation_token: CancellationToken,
         module_operate_sender: UnboundedSender<ModuleOperate>,
         offline_server: NamedPipeServer,
     ) -> Result<()> {
         loop {
-            if cancellation_token.is_cancelled() {
+            if CANCELLATION_TOKEN.is_cancelled() {
                 return Ok(());
             }
             offline_server.readable().await?;
@@ -235,12 +207,11 @@ impl WindowsNamedPipeProcessor {
     }
 
     async fn heartbeat_named_pipe_processor(
-        cancellation_token: CancellationToken,
         module_operate_sender: UnboundedSender<ModuleOperate>,
         heartbeat_server: NamedPipeServer,
     ) -> Result<()> {
         loop {
-            if cancellation_token.is_cancelled() {
+            if CANCELLATION_TOKEN.is_cancelled() {
                 return Ok(());
             }
             heartbeat_server.readable().await?;
@@ -264,12 +235,11 @@ impl WindowsNamedPipeProcessor {
     }
 
     async fn update_named_pipe_processor(
-        cancellation_token: CancellationToken,
         module_operate_sender: UnboundedSender<ModuleOperate>,
         update_server: NamedPipeServer,
     ) -> Result<()> {
         loop {
-            if cancellation_token.is_cancelled() {
+            if CANCELLATION_TOKEN.is_cancelled() {
                 return Ok(());
             }
             update_server.readable().await?;
@@ -293,12 +263,11 @@ impl WindowsNamedPipeProcessor {
     }
 
     async fn instruct_named_pipe_processor(
-        cancellation_token: CancellationToken,
         instruct_sender: UnboundedSender<InstructEntity>,
         instruct_server: NamedPipeServer,
     ) -> Result<()> {
         loop {
-            if cancellation_token.is_cancelled() {
+            if CANCELLATION_TOKEN.is_cancelled() {
                 return Ok(());
             }
             instruct_server.readable().await?;
@@ -321,12 +290,11 @@ impl WindowsNamedPipeProcessor {
     }
 
     async fn manipulate_named_pipe_processor(
-        cancellation_token: CancellationToken,
         manipulate_sender: UnboundedSender<ManipulateEntity>,
         manipulate_server: NamedPipeServer,
     ) -> Result<()> {
         loop {
-            if cancellation_token.is_cancelled() {
+            if CANCELLATION_TOKEN.is_cancelled() {
                 return Ok(());
             }
             manipulate_server.readable().await?;

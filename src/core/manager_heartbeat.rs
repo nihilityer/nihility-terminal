@@ -1,17 +1,42 @@
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use anyhow::Result;
-use tokio::sync::mpsc::WeakUnboundedSender;
-use tracing::{debug, info};
+use tokio::{select, spawn};
+use tokio::sync::mpsc::{UnboundedSender, WeakUnboundedSender};
+use tracing::{debug, error, info};
 
+use crate::CANCELLATION_TOKEN;
 use crate::entity::module::{ModuleOperate, OperateType};
 
 use super::{HEARTBEAT_TIME, SUBMODULE_MAP};
 
+pub(super) fn start(
+    shutdown_sender: UnboundedSender<String>,
+    module_operate_sender: WeakUnboundedSender<ModuleOperate>,
+) {
+    spawn(async move {
+        select! {
+            heartbeat_result = manager_heartbeat(module_operate_sender) => {
+                match heartbeat_result {
+                    Err(e) => {
+                        error!("Heartbeat Manager Error: {}", e);
+                        CANCELLATION_TOKEN.cancel();
+                    }
+                    _ => {}
+                }
+            },
+            _ = CANCELLATION_TOKEN.cancelled() => {}
+        }
+        shutdown_sender
+            .send("Heartbeat Manager".to_string())
+            .unwrap();
+    });
+}
+
 /// 管理子模块的心跳，当有子模块心跳过期时
 ///
 /// 通过`module_operate_sender`发送消息将对于子模块离线
-pub(super) async fn manager_heartbeat(
+async fn manager_heartbeat(
     module_operate_sender: WeakUnboundedSender<ModuleOperate>,
 ) -> Result<()> {
     loop {

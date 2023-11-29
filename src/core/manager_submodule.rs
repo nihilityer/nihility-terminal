@@ -2,21 +2,38 @@ use std::collections::HashMap;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use anyhow::{anyhow, Result};
-use tokio::sync::mpsc::UnboundedReceiver;
+use tokio::spawn;
+use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 use tracing::{debug, error, info};
 use uuid::Uuid;
 
 use crate::core::instruct_manager::PointPayload;
 use crate::entity::module::{ModuleOperate, OperateType, Submodule};
+use crate::CANCELLATION_TOKEN;
 
 use super::{INSTRUCT_ENCODER, INSTRUCT_MANAGER, SUBMODULE_MAP};
+
+pub(super) fn start(
+    shutdown_sender: UnboundedSender<String>,
+    module_operate_receiver: UnboundedReceiver<ModuleOperate>,
+) {
+    spawn(async move {
+        if let Err(e) = manager_submodule(module_operate_receiver).await {
+            error!("Submodule Manager Error: {}", e);
+            CANCELLATION_TOKEN.cancel();
+        }
+        shutdown_sender
+            .send("Submodule Manager".to_string())
+            .unwrap();
+    });
+}
 
 /// 负责管理子模块
 ///
 /// 1、定时获取子模块心跳，当离线时将对应子模块从模组中卸载
 ///
 /// 2、特定错误进行重试或只通知
-pub(super) async fn manager_submodule(
+async fn manager_submodule(
     mut module_operate_receiver: UnboundedReceiver<ModuleOperate>,
 ) -> Result<()> {
     info!("Start Receive ModuleOperate");

@@ -5,10 +5,8 @@ use nihility_common::manipulate::ManipulateReq;
 use nihility_common::response_code::RespCode;
 use tokio::spawn;
 use tokio::sync::mpsc::UnboundedSender;
-use tokio_util::sync::CancellationToken;
 use tracing::{debug, error, info};
 
-use crate::communicat::grpc::GrpcServer;
 use crate::communicat::multicast::Multicast;
 #[cfg(unix)]
 use crate::communicat::pipe::PipeProcessor;
@@ -18,14 +16,15 @@ use crate::config::CommunicatConfig;
 use crate::entity::instruct::InstructEntity;
 use crate::entity::manipulate::ManipulateEntity;
 use crate::entity::module::ModuleOperate;
+use crate::CANCELLATION_TOKEN;
 
 pub mod grpc;
+pub mod mock;
 mod multicast;
 #[cfg(unix)]
 pub mod pipe;
 #[cfg(windows)]
 pub mod windows_named_pipe;
-pub mod mock;
 
 /// 发送指令特征
 #[async_trait]
@@ -41,44 +40,26 @@ pub trait SendManipulateOperate {
     async fn send(&mut self, manipulate: ManipulateReq) -> Result<RespCode>;
 }
 
-pub async fn communicat_module_start(
+pub fn communicat_module_start(
     config: CommunicatConfig,
-    cancellation_token: CancellationToken,
     operate_module_sender: UnboundedSender<ModuleOperate>,
     instruct_sender: UnboundedSender<InstructEntity>,
     manipulate_sender: UnboundedSender<ManipulateEntity>,
-) -> () {
+) -> Result<()> {
     let (communicat_status_se, mut communicat_status_re) =
         tokio::sync::mpsc::unbounded_channel::<String>();
 
-    let grpc_config = config.grpc.clone();
-    let grpc_cancellation_token = cancellation_token.clone();
-    let grpc_communicat_status_sender = communicat_status_se.clone();
-    let grpc_operate_module_sender = operate_module_sender.clone();
-    let grpc_instruct_sender = instruct_sender.clone();
-    let grpc_manipulate_sender = manipulate_sender.clone();
-    spawn(async move {
-        if let Err(e) = GrpcServer::start(
-            grpc_config,
-            grpc_cancellation_token.clone(),
-            grpc_operate_module_sender,
-            grpc_instruct_sender,
-            grpc_manipulate_sender,
-        )
-        .await
-        {
-            error!("Grpc Server Error: {}", e);
-            grpc_cancellation_token.cancel();
-        }
-        grpc_communicat_status_sender
-            .send("Grpc Server".to_string())
-            .unwrap();
-    });
+    grpc::start(
+        config.grpc.clone(),
+        communicat_status_se.clone(),
+        operate_module_sender.clone(),
+        instruct_sender.clone(),
+        manipulate_sender.clone(),
+    );
 
     #[cfg(unix)]
     {
         let pipe_config = config.pipe.clone();
-        let pipe_cancellation_token = cancellation_token.clone();
         let pipe_communicat_status_sender = communicat_status_se.clone();
         let pipe_operate_module_sender = operate_module_sender.clone();
         let pipe_instruct_sender = instruct_sender.clone();
@@ -94,7 +75,7 @@ pub async fn communicat_module_start(
             .await
             {
                 error!("Pipe Processor Error: {}", e);
-                pipe_cancellation_token.cancel();
+                CANCELLATION_TOKEN.cancel();
             }
             pipe_communicat_status_sender
                 .send("Pipe Processor".to_string())
@@ -103,40 +84,21 @@ pub async fn communicat_module_start(
     }
 
     #[cfg(windows)]
-    {
-        let windows_named_pipes_config = config.windows_named_pipes.clone();
-        let windows_named_pipes_cancellation_token = cancellation_token.clone();
-        let windows_named_pipes_communicat_status_sender = communicat_status_se.clone();
-        let windows_named_pipes_operate_module_sender = operate_module_sender.clone();
-        let windows_named_pipes_instruct_sender = instruct_sender.clone();
-        let windows_named_pipes_manipulate_sender = manipulate_sender.clone();
-        spawn(async move {
-            if let Err(e) = WindowsNamedPipeProcessor::start(
-                windows_named_pipes_config,
-                windows_named_pipes_cancellation_token.clone(),
-                windows_named_pipes_operate_module_sender,
-                windows_named_pipes_instruct_sender,
-                windows_named_pipes_manipulate_sender,
-            )
-            .await
-            {
-                error!("Windows Named Pipe Processor Error: {}", e);
-                windows_named_pipes_cancellation_token.cancel();
-            }
-            windows_named_pipes_communicat_status_sender
-                .send("Windows Named Pipe Processor".to_string())
-                .unwrap();
-        });
-    }
+    WindowsNamedPipeProcessor::start_processor(
+        config.windows_named_pipes.clone(),
+        operate_module_sender.clone(),
+        instruct_sender.clone(),
+        manipulate_sender.clone(),
+    )?;
+
     drop(operate_module_sender);
 
     let multicast_config = config.multicast.clone();
-    let multicast_cancellation_token = cancellation_token.clone();
     let multicast_communicat_status_sender = communicat_status_se.clone();
     spawn(async move {
         if let Err(e) = Multicast::start(multicast_config).await {
             error!("Multicast Error: {}", e);
-            multicast_cancellation_token.cancel();
+            CANCELLATION_TOKEN.cancel();
         }
         multicast_communicat_status_sender
             .send("Multicast".to_string())
@@ -148,8 +110,9 @@ pub async fn communicat_module_start(
             debug!("{} Exit", communicat_name);
         }
         info!("All Communicat Module Exit");
-        if !cancellation_token.is_cancelled() {
-            cancellation_token.cancel();
+        if !CANCELLATION_TOKEN.is_cancelled() {
+            CANCELLATION_TOKEN.cancel();
         }
     });
+    Ok(())
 }

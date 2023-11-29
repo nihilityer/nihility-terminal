@@ -9,53 +9,74 @@ use nihility_common::manipulate::{ManipulateReq, ManipulateResp};
 use nihility_common::response_code::RespCode;
 use nihility_common::submodule::submodule_server::{Submodule, SubmoduleServer};
 use nihility_common::submodule::{SubModuleResp, SubmoduleReq};
+use tokio::spawn;
 use tokio::sync::mpsc::UnboundedSender;
-use tokio_util::sync::CancellationToken;
 use tonic::transport::{Channel, Server};
 use tonic::{Request, Response, Status};
-use tracing::info;
+use tracing::{error, info};
 
 use crate::communicat::{SendInstructOperate, SendManipulateOperate};
 use crate::config::GrpcConfig;
 use crate::entity::instruct::InstructEntity;
 use crate::entity::manipulate::ManipulateEntity;
 use crate::entity::module::{ModuleOperate, OperateType};
+use crate::CANCELLATION_TOKEN;
 
-pub struct GrpcServer;
-
-impl GrpcServer {
-    pub async fn start(
-        grpc_config: GrpcConfig,
-        cancellation_token: CancellationToken,
-        operate_module_sender: UnboundedSender<ModuleOperate>,
-        instruct_sender: UnboundedSender<InstructEntity>,
-        manipulate_sender: UnboundedSender<ManipulateEntity>,
-    ) -> Result<()> {
-        if !grpc_config.enable {
-            return Ok(());
+pub(super) fn start(
+    grpc_config: GrpcConfig,
+    communicat_status_sender: UnboundedSender<String>,
+    operate_module_sender: UnboundedSender<ModuleOperate>,
+    instruct_sender: UnboundedSender<InstructEntity>,
+    manipulate_sender: UnboundedSender<ManipulateEntity>,
+) {
+    spawn(async move {
+        if let Err(e) = start_server(
+            grpc_config,
+            operate_module_sender,
+            instruct_sender,
+            manipulate_sender,
+        )
+        .await
+        {
+            error!("Grpc Server Error: {}", e);
+            CANCELLATION_TOKEN.cancel();
         }
-        let bind_addr = format!(
-            "{}:{}",
-            grpc_config.addr.to_string(),
-            grpc_config.port.to_string()
-        );
-        info!("Grpc Server Bind At {}", &bind_addr);
+        communicat_status_sender
+            .send("Grpc Server".to_string())
+            .unwrap();
+    });
+}
 
-        Server::builder()
-            .add_service(SubmoduleServer::new(SubmoduleImpl::init(
-                operate_module_sender,
-            )))
-            .add_service(InstructServer::new(InstructImpl::init(instruct_sender)))
-            .add_service(ManipulateServer::new(ManipulateImpl::init(
-                manipulate_sender,
-            )))
-            .serve_with_shutdown(bind_addr.parse()?, async move {
-                cancellation_token.cancelled().await
-            })
-            .await?;
-
-        Ok(())
+async fn start_server(
+    grpc_config: GrpcConfig,
+    operate_module_sender: UnboundedSender<ModuleOperate>,
+    instruct_sender: UnboundedSender<InstructEntity>,
+    manipulate_sender: UnboundedSender<ManipulateEntity>,
+) -> Result<()> {
+    if !grpc_config.enable {
+        return Ok(());
     }
+    let bind_addr = format!(
+        "{}:{}",
+        grpc_config.addr.to_string(),
+        grpc_config.port.to_string()
+    );
+    info!("Grpc Server Bind At {}", &bind_addr);
+
+    Server::builder()
+        .add_service(SubmoduleServer::new(SubmoduleImpl::init(
+            operate_module_sender,
+        )))
+        .add_service(InstructServer::new(InstructImpl::init(instruct_sender)))
+        .add_service(ManipulateServer::new(ManipulateImpl::init(
+            manipulate_sender,
+        )))
+        .serve_with_shutdown(bind_addr.parse()?, async move {
+            CANCELLATION_TOKEN.cancelled().await
+        })
+        .await?;
+
+    Ok(())
 }
 
 #[async_trait]

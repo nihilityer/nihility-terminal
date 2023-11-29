@@ -1,11 +1,28 @@
 use anyhow::{anyhow, Result};
 use nihility_common::response_code::RespCode;
-use tokio::sync::mpsc::UnboundedReceiver;
+use tokio::spawn;
+use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 use tracing::{debug, error, info, warn};
 
 use crate::entity::instruct::InstructEntity;
+use crate::CANCELLATION_TOKEN;
 
 use super::{INSTRUCT_ENCODER, INSTRUCT_MANAGER, SUBMODULE_MAP};
+
+pub(super) fn start(
+    shutdown_sender: UnboundedSender<String>,
+    instruct_receiver: UnboundedReceiver<InstructEntity>,
+) {
+    spawn(async move {
+        if let Err(e) = manager_instruct(instruct_receiver).await {
+            error!("Instruct Manager Error: {}", e);
+            CANCELLATION_TOKEN.cancel();
+        }
+        shutdown_sender
+            .send("Instruct Manager".to_string())
+            .unwrap();
+    });
+}
 
 /// 处理指令的接收和转发
 ///

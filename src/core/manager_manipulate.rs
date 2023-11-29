@@ -1,12 +1,29 @@
 use anyhow::Result;
 use nihility_common::manipulate::ManipulateType;
 use nihility_common::response_code::RespCode;
-use tokio::sync::mpsc::UnboundedReceiver;
+use tokio::spawn;
+use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 use tracing::{debug, error, info};
 
 use crate::entity::manipulate::ManipulateEntity;
+use crate::CANCELLATION_TOKEN;
 
 use super::SUBMODULE_MAP;
+
+pub(super) fn start(
+    shutdown_sender: UnboundedSender<String>,
+    manipulate_receiver: UnboundedReceiver<ManipulateEntity>,
+) {
+    spawn(async move {
+        if let Err(e) = manager_manipulate(manipulate_receiver).await {
+            error!("Manipulate Manager Error: {}", e);
+            CANCELLATION_TOKEN.cancel();
+        }
+        shutdown_sender
+            .send("Manipulate Manager".to_string())
+            .unwrap();
+    });
+}
 
 /// 处理操作的接收和转发
 ///
@@ -15,7 +32,7 @@ use super::SUBMODULE_MAP;
 /// 2、记录日志
 ///
 /// 3、处理特定的错误
-pub(super) async fn manager_manipulate(
+async fn manager_manipulate(
     mut manipulate_receiver: UnboundedReceiver<ManipulateEntity>,
 ) -> Result<()> {
     info!("Start Receive Manipulate");

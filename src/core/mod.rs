@@ -4,9 +4,7 @@ use std::sync::Mutex;
 use anyhow::{anyhow, Result};
 use lazy_static::lazy_static;
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender, WeakUnboundedSender};
-use tokio::{select, spawn};
-use tokio_util::sync::CancellationToken;
-use tracing::{error, info};
+use tracing::info;
 
 use crate::config::CoreConfig;
 use crate::entity::instruct::InstructEntity;
@@ -35,7 +33,6 @@ lazy_static! {
 
 pub async fn core_start(
     mut core_config: CoreConfig,
-    cancellation_token: CancellationToken,
     shutdown_sender: UnboundedSender<String>,
     module_operate_sender: WeakUnboundedSender<ModuleOperate>,
     module_operate_receiver: UnboundedReceiver<ModuleOperate>,
@@ -61,61 +58,13 @@ pub async fn core_start(
             instruct_manager::build_instruct_manager(core_config.module_manager).await?;
     }
 
-    let submodule_cancellation_token = cancellation_token.clone();
-    let submodule_shutdown_sender = shutdown_sender.clone();
-    spawn(async move {
-        if let Err(e) = manager_submodule::manager_submodule(module_operate_receiver).await {
-            error!("Submodule Manager Error: {}", e);
-            submodule_cancellation_token.cancel();
-        }
-        submodule_shutdown_sender
-            .send("Submodule Manager".to_string())
-            .unwrap();
-    });
+    manager_submodule::start(shutdown_sender.clone(), module_operate_receiver);
 
-    let heartbeat_cancellation_token = cancellation_token.clone();
-    let heartbeat_shutdown_sender = shutdown_sender.clone();
-    spawn(async move {
-        select! {
-            heartbeat_result = manager_heartbeat::manager_heartbeat(module_operate_sender) => {
-                match heartbeat_result {
-                    Err(e) => {
-                        error!("Heartbeat Manager Error: {}", e);
-                        heartbeat_cancellation_token.cancel();
-                    }
-                    _ => {}
-                }
-            },
-            _ = heartbeat_cancellation_token.cancelled() => {}
-        }
-        heartbeat_shutdown_sender
-            .send("Heartbeat Manager".to_string())
-            .unwrap();
-    });
+    manager_heartbeat::start(shutdown_sender.clone(), module_operate_sender);
 
-    let instruct_cancellation_token = cancellation_token.clone();
-    let instruct_shutdown_sender = shutdown_sender.clone();
-    spawn(async move {
-        if let Err(e) = manager_instruct::manager_instruct(instruct_receiver).await {
-            error!("Instruct Manager Error: {}", e);
-            instruct_cancellation_token.cancel();
-        }
-        instruct_shutdown_sender
-            .send("Instruct Manager".to_string())
-            .unwrap();
-    });
+    manager_instruct::start(shutdown_sender.clone(), instruct_receiver);
 
-    let manipulate_cancellation_token = cancellation_token.clone();
-    let manipulate_shutdown_sender = shutdown_sender.clone();
-    spawn(async move {
-        if let Err(e) = manager_manipulate::manager_manipulate(manipulate_receiver).await {
-            error!("Manipulate Manager Error: {}", e);
-            manipulate_cancellation_token.cancel();
-        }
-        manipulate_shutdown_sender
-            .send("Manipulate Manager".to_string())
-            .unwrap();
-    });
+    manager_manipulate::start(shutdown_sender.clone(), manipulate_receiver);
 
     Ok(())
 }
