@@ -5,9 +5,8 @@ use nihility_common::manipulate::ManipulateReq;
 use nihility_common::response_code::RespCode;
 use tokio::spawn;
 use tokio::sync::mpsc::UnboundedSender;
-use tracing::{debug, error, info};
+use tracing::{debug, info};
 
-use crate::communicat::multicast::Multicast;
 #[cfg(unix)]
 use crate::communicat::pipe::PipeProcessor;
 #[cfg(windows)]
@@ -91,20 +90,9 @@ pub fn communicat_module_start(
         manipulate_sender.clone(),
     )?;
 
+    multicast::start(config.multicast.clone(), communicat_status_se.clone());
+
     drop(operate_module_sender);
-
-    let multicast_config = config.multicast.clone();
-    let multicast_communicat_status_sender = communicat_status_se.clone();
-    spawn(async move {
-        if let Err(e) = Multicast::start(multicast_config).await {
-            error!("Multicast Error: {}", e);
-            CANCELLATION_TOKEN.cancel();
-        }
-        multicast_communicat_status_sender
-            .send("Multicast".to_string())
-            .unwrap();
-    });
-
     spawn(async move {
         while let Some(communicat_name) = communicat_status_re.recv().await {
             debug!("{} Exit", communicat_name);

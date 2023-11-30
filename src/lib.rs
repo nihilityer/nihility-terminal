@@ -45,7 +45,7 @@ impl NihilityTerminal {
 
         core::core_start(
             summary_config.core,
-            shutdown_se.clone(),
+            shutdown_se,
             module_operate_se.downgrade(),
             module_operate_re,
             instruct_re,
@@ -53,7 +53,6 @@ impl NihilityTerminal {
         )
         .await?;
 
-        drop(shutdown_se);
         drop(module_operate_se);
         select! {
             _ = signal::ctrl_c() => {
