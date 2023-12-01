@@ -9,7 +9,7 @@ use tracing::info;
 use crate::config::CoreConfig;
 use crate::entity::instruct::InstructEntity;
 use crate::entity::manipulate::ManipulateEntity;
-use crate::entity::module::{ModuleOperate, Submodule};
+use crate::entity::submodule::{ModuleOperate, Submodule};
 
 pub mod encoder;
 pub mod instruct_manager;
@@ -24,11 +24,9 @@ lazy_static! {
     static ref SUBMODULE_MAP: tokio::sync::Mutex<HashMap<String, Submodule>> =
         tokio::sync::Mutex::new(HashMap::<String, Submodule>::new());
     static ref INSTRUCT_ENCODER: Mutex<Box<dyn encoder::InstructEncoder + Send + Sync>> =
-        Mutex::new(Box::new(encoder::mock::MockInstructEncoder::default()));
+        Mutex::new(Box::<encoder::mock::MockInstructEncoder>::default());
     static ref INSTRUCT_MANAGER: tokio::sync::Mutex<Box<dyn instruct_manager::InstructManager + Send + Sync>> =
-        tokio::sync::Mutex::new(Box::new(
-            instruct_manager::mock::MockInstructManager::default()
-        ));
+        tokio::sync::Mutex::new(Box::<instruct_manager::mock::MockInstructManager>::default());
 }
 
 pub async fn core_start(

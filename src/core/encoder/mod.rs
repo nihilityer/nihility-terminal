@@ -1,6 +1,8 @@
 use anyhow::Result;
 use tracing::info;
 
+use EncoderType::SentenceTransformers;
+
 use crate::config::{EncoderConfig, EncoderType};
 
 pub mod mock;
@@ -20,15 +22,17 @@ pub trait InstructEncoder {
     fn encode_size(&self) -> u64;
 }
 
-pub fn encoder_builder(encoder_config: &EncoderConfig) -> Result<Box<dyn InstructEncoder + Send + Sync>> {
+pub fn encoder_builder(
+    encoder_config: &EncoderConfig,
+) -> Result<Box<dyn InstructEncoder + Send + Sync>> {
     info!("Use Encoder Type: {:?}", &encoder_config.encoder_type);
-    return match encoder_config.encoder_type {
-        EncoderType::SentenceTransformers => {
+    match encoder_config.encoder_type {
+        SentenceTransformers => {
             let encoder = sentence_transformers::SentenceTransformers::init(
                 encoder_config.model_path.to_string(),
                 encoder_config.model_name.to_string(),
             )?;
             Ok(Box::new(encoder))
         }
-    };
+    }
 }

@@ -6,7 +6,7 @@ use tokio::sync::mpsc::{UnboundedSender, WeakUnboundedSender};
 use tracing::{debug, error, info};
 
 use crate::CANCELLATION_TOKEN;
-use crate::entity::module::{ModuleOperate, OperateType};
+use crate::entity::submodule::{ModuleOperate, OperateType};
 
 use super::{HEARTBEAT_TIME, SUBMODULE_MAP};
 
@@ -17,12 +17,9 @@ pub(super) fn start(
     spawn(async move {
         select! {
             heartbeat_result = manager_heartbeat(module_operate_sender) => {
-                match heartbeat_result {
-                    Err(e) => {
-                        error!("Heartbeat Manager Error: {}", e);
-                        CANCELLATION_TOKEN.cancel();
-                    }
-                    _ => {}
+                if let Err(e) = heartbeat_result {
+                    error!("Heartbeat Manager Error: {}", e);
+                    CANCELLATION_TOKEN.cancel();
                 }
             },
             _ = CANCELLATION_TOKEN.cancelled() => {}
@@ -48,7 +45,7 @@ async fn manager_heartbeat(
             if now_timestamp - submodule.heartbeat_time > 2 * HEARTBEAT_TIME {
                 info!("Submodule {:?} Heartbeat Exception", &submodule.name);
                 module_operate_sender.upgrade().unwrap().send(
-                    ModuleOperate::create_by_submodule(&submodule, OperateType::OFFLINE),
+                    ModuleOperate::create_by_submodule(submodule, OperateType::OFFLINE),
                 )?;
             }
         }

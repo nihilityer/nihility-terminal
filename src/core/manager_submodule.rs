@@ -8,7 +8,7 @@ use tracing::{debug, error, info};
 use uuid::Uuid;
 
 use crate::core::instruct_manager::PointPayload;
-use crate::entity::module::{ModuleOperate, OperateType, Submodule};
+use crate::entity::submodule::{ModuleOperate, OperateType, Submodule};
 use crate::CANCELLATION_TOKEN;
 
 use super::{INSTRUCT_ENCODER, INSTRUCT_MANAGER, SUBMODULE_MAP};
@@ -169,7 +169,7 @@ async fn offline_submodule(module_operate: ModuleOperate) -> Result<String> {
     {
         let mut locked_submodule_map = SUBMODULE_MAP.lock().await;
         if let Some(submodule) = locked_submodule_map.get(module_operate.name.as_str()) {
-            for (_, point_id) in &submodule.default_instruct_map {
+            for (_, point_id) in submodule.default_instruct_map.iter() {
                 point_ids.push(point_id.to_string());
             }
             locked_submodule_map.remove(module_operate.name.as_str());
@@ -195,7 +195,7 @@ async fn register_submodule(module_operate: ModuleOperate) -> Result<String> {
         match INSTRUCT_ENCODER.try_lock() {
             Ok(mut locked_instruct_encoder) => {
                 debug!("Lock (submodule_map, instruct_encoder) Success");
-                if let Some(_) = locked_submodule_map.get(submodule.name.as_str()) {
+                if locked_submodule_map.get(submodule.name.as_str()).is_some() {
                     return Err(anyhow!(
                         "The Current Submodule {:?} Is Registered",
                         &submodule.name

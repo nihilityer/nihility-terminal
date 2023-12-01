@@ -6,6 +6,7 @@ use nihility_common::instruct::instruct_client::InstructClient;
 use nihility_common::manipulate::manipulate_client::ManipulateClient;
 use nihility_common::response_code::RespCode;
 use nihility_common::submodule::{ReceiveType, SubmoduleReq, SubmoduleType};
+use SubmoduleType::{GrpcType, HttpType, PipeType, WindowsNamedPipeType};
 use tracing::debug;
 
 use crate::communicat::mock::{MockInstructClient, MockManipulateClient};
@@ -88,8 +89,8 @@ impl ModuleOperate {
         ModuleOperate {
             name: submodule.name.to_string(),
             default_instruct,
-            submodule_type: submodule.sub_module_type.clone(),
-            receive_type: submodule.receive_type.clone(),
+            submodule_type: submodule.sub_module_type,
+            receive_type: submodule.receive_type,
             conn_params: HashMap::<String, String>::new(),
             operate_type,
         }
@@ -99,26 +100,26 @@ impl ModuleOperate {
 impl Submodule {
     /// 统一实现由注册消息创建Module
     pub async fn create_by_operate(operate: ModuleOperate) -> Result<Self> {
-        return match operate.submodule_type {
-            SubmoduleType::GrpcType => Ok(Self::create_grpc_module(operate).await?),
-            SubmoduleType::PipeType => {
+        match operate.submodule_type {
+            GrpcType => Ok(Self::create_grpc_module(operate).await?),
+            PipeType => {
                 #[cfg(unix)]
                 return Ok(Self::create_pipe_module(operate)?);
                 #[cfg(windows)]
-                return Err(anyhow!("This OS Cannot Create PipeType Submodule"));
+                Err(anyhow!("This OS Cannot Create PipeType Submodule"))
             }
-            SubmoduleType::WindowsNamedPipeType => {
+            WindowsNamedPipeType => {
                 #[cfg(unix)]
                 return Err(anyhow!(
                     "This OS Cannot Create WindowsNamedPipeType Submodule"
                 ));
                 #[cfg(windows)]
-                return Ok(Self::create_windows_named_pipe_module(operate)?);
+                Ok(Self::create_windows_named_pipe_module(operate)?)
             }
-            SubmoduleType::HttpType => {
-                return Err(anyhow!("This Submodule Type Not Support Yet"));
+            HttpType => {
+                Err(anyhow!("This Submodule Type Not Support Yet"))
             }
-        };
+        }
     }
 
     /// 创建pipe通信的子模块
@@ -166,14 +167,14 @@ impl Submodule {
             "Start Create Windows Named Pipe Submodule By {:?}",
             &operate
         );
-        if let None = operate.conn_params.get(INSTRUCT_WINDOWS_NAMED_PIPE_FIELD) {
+        if operate.conn_params.get(INSTRUCT_WINDOWS_NAMED_PIPE_FIELD).is_none() {
             return Err(anyhow!(
                 "Create {:?} Type Submodule Error, ModuleOperate Missing {:?} Filed",
                 &operate.submodule_type,
                 INSTRUCT_WINDOWS_NAMED_PIPE_FIELD
             ));
         }
-        if let None = operate.conn_params.get(MANIPULATE_WINDOWS_NAMED_PIPE_FIELD) {
+        if operate.conn_params.get(MANIPULATE_WINDOWS_NAMED_PIPE_FIELD).is_none() {
             return Err(anyhow!(
                 "Create {:?} Type Submodule Error, ModuleOperate Missing {:?} Filed",
                 &operate.submodule_type,
@@ -219,7 +220,7 @@ impl Submodule {
     /// 连接参数需要具有`grpc_addr`参数
     async fn create_grpc_module(operate: ModuleOperate) -> Result<Submodule> {
         debug!("Start Create Grpc Submodule By {:?}", &operate);
-        if let None = operate.conn_params.get(GRPC_CONN_ADDR_FIELD) {
+        if operate.conn_params.get(GRPC_CONN_ADDR_FIELD).is_none() {
             return Err(anyhow!(
                 "Create {:?} Type Submodule Error, ModuleOperate Missing {:?} Filed",
                 &operate.submodule_type,
@@ -229,9 +230,9 @@ impl Submodule {
         let grpc_addr = operate.conn_params.get(GRPC_CONN_ADDR_FIELD).unwrap();
 
         let mut instruct_client: Box<dyn SendInstructOperate + Send + Sync> =
-            Box::new(MockInstructClient::default());
+            Box::<MockInstructClient>::default();
         let mut manipulate_client: Box<dyn SendManipulateOperate + Send + Sync> =
-            Box::new(MockManipulateClient::default());
+            Box::<MockManipulateClient>::default();
         match operate.receive_type {
             ReceiveType::DefaultType => {
                 instruct_client = Box::new(InstructClient::connect(grpc_addr.to_string()).await?);
@@ -267,12 +268,12 @@ impl Submodule {
     /// 模块发送指令由此方法统一执行
     pub async fn send_instruct(&mut self, instruct: InstructEntity) -> Result<RespCode> {
         debug!("Send Instruct Client Type: {:?}", self.sub_module_type);
-        Ok(self.instruct_client.send(instruct.create_req()).await?)
+        self.instruct_client.send(instruct.create_req()).await
     }
 
     /// 模块发送操作由此模块统一执行
     pub async fn send_manipulate(&mut self, manipulate: ManipulateEntity) -> Result<RespCode> {
         debug!("Send Manipulate Client Type: {:?}", self.sub_module_type);
-        Ok(self.manipulate_client.send(manipulate.create_req()).await?)
+        self.manipulate_client.send(manipulate.create_req()).await
     }
 }

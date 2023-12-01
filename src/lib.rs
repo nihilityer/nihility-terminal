@@ -10,7 +10,7 @@ use tracing::info;
 use crate::config::SummaryConfig;
 use crate::entity::instruct::InstructEntity;
 use crate::entity::manipulate::ManipulateEntity;
-use crate::entity::module::ModuleOperate;
+use crate::entity::submodule::ModuleOperate;
 use crate::log::Log;
 
 mod communicat;

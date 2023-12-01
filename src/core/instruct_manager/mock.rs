@@ -16,12 +16,12 @@ impl InstructManager for MockInstructManager {
         Self: Sized + Send + Sync,
     {
         warn!("Mock Instruct Manager Init Config: {:?}", config);
-        return Err(anyhow!("Mock Instruct Manager Cannot Init"));
+        Err(anyhow!("Mock Instruct Manager Cannot Init"))
     }
 
     async fn search(&self, encode: Vec<f32>) -> Result<String> {
         warn!("Mock Instruct Manager Search encode: {:?}", encode);
-        return Err(anyhow!("Mock Instruct Manager Cannot Search"));
+        Err(anyhow!("Mock Instruct Manager Cannot Search"))
     }
 
     async fn append_points(&self, module_name: String, _points: Vec<PointPayload>) -> Result<()> {
@@ -29,11 +29,11 @@ impl InstructManager for MockInstructManager {
             "Mock Instruct Manager Append Points, module_name: {:?}",
             module_name
         );
-        return Err(anyhow!("Mock Instruct Manager Cannot Append Points"));
+        Err(anyhow!("Mock Instruct Manager Cannot Append Points"))
     }
 
     async fn remove_points(&self, _points: Vec<String>) -> Result<()> {
         warn!("Mock Instruct Manager Remove Points");
-        return Err(anyhow!("Mock Instruct Manager Cannot Remove Points"));
+        Err(anyhow!("Mock Instruct Manager Cannot Remove Points"))
     }
 }

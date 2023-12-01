@@ -38,13 +38,13 @@ impl InstructManager for GrpcQdrant {
     where
         Self: Sized + Send + Sync,
     {
-        if let None = config.get(ENCODE_SIZE_FIELD) {
+        if config.get(ENCODE_SIZE_FIELD).is_none() {
             return Err(anyhow!(
                 "Required configuration {:?} is missing",
                 ENCODE_SIZE_FIELD
             ));
         }
-        if let None = config.get(QDRANT_GRPC_ADDR_FIELD) {
+        if config.get(QDRANT_GRPC_ADDR_FIELD).is_none() {
             return Err(anyhow!(
                 "Required configuration {:?} is missing",
                 QDRANT_GRPC_ADDR_FIELD

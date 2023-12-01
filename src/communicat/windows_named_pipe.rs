@@ -17,7 +17,7 @@ use crate::communicat::{SendInstructOperate, SendManipulateOperate};
 use crate::config::WindowsNamedPipesConfig;
 use crate::entity::instruct::InstructEntity;
 use crate::entity::manipulate::ManipulateEntity;
-use crate::entity::module::{ModuleOperate, OperateType};
+use crate::entity::submodule::{ModuleOperate, OperateType};
 use crate::CANCELLATION_TOKEN;
 
 #[cfg(windows)]
@@ -359,7 +359,7 @@ impl WindowsNamedPipeInstructClient {
             let mut data = vec![0; 1024];
             instruct_req.encode(&mut data)?;
 
-            match self.instruct_sender.try_write(&*data) {
+            match self.instruct_sender.try_write(&data) {
                 Ok(_) => {
                     break;
                 }
@@ -395,7 +395,7 @@ impl WindowsNamedPipeManipulateClient {
             let mut data = vec![0; 1024];
             manipulate_req.encode(&mut data)?;
 
-            match self.manipulate_sender.try_write(&*data) {
+            match self.manipulate_sender.try_write(&data) {
                 Ok(_) => {
                     break;
                 }

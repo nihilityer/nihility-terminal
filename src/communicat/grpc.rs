@@ -19,7 +19,7 @@ use crate::communicat::{SendInstructOperate, SendManipulateOperate};
 use crate::config::GrpcConfig;
 use crate::entity::instruct::InstructEntity;
 use crate::entity::manipulate::ManipulateEntity;
-use crate::entity::module::{ModuleOperate, OperateType};
+use crate::entity::submodule::{ModuleOperate, OperateType};
 use crate::CANCELLATION_TOKEN;
 
 pub(super) fn start(
@@ -58,8 +58,8 @@ async fn start_server(
     }
     let bind_addr = format!(
         "{}:{}",
-        grpc_config.addr.to_string(),
-        grpc_config.port.to_string()
+        grpc_config.addr,
+        grpc_config.port
     );
     info!("Grpc Server Bind At {}", &bind_addr);
 

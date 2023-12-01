@@ -218,40 +218,42 @@ impl SummaryConfig {
             multicast: multicast_config,
         };
 
-        return Ok(SummaryConfig {
+        Ok(SummaryConfig {
             log: log_config,
             core: core_config,
             communicat: communicat_config,
-        });
+        })
     }
 
     /// 当配置文件不存在时使用默认配置当配置文件不存在时使用默认配置
     pub fn init() -> Result<Self> {
         let mut config = SummaryConfig::default()?;
 
-        return if Path::try_exists(TOML_CONFIG_FILE_NAME.as_ref())? {
-            let result: SummaryConfig = Figment::from(Serialized::defaults(config))
-                .merge(Toml::file(TOML_CONFIG_FILE_NAME))
+        if Path::try_exists(TOML_CONFIG_FILE_NAME.as_ref())? {
+            let SummaryConfig { log, communicat, core }: SummaryConfig = Figment::merge(
+                Figment::from(Serialized::defaults(config)),
+                Toml::file(TOML_CONFIG_FILE_NAME)
+            )
                 .extract()?;
-            Ok(result)
+            Ok(SummaryConfig { log, communicat, core })
         } else if Path::try_exists(YAML_CONFIG_FILE_NAME.as_ref())? {
-            let result: SummaryConfig = Figment::from(Serialized::defaults(config))
+            let SummaryConfig { log, communicat, core }: SummaryConfig = Figment::from(Serialized::defaults(config))
                 .merge(Yaml::file(YAML_CONFIG_FILE_NAME))
                 .extract()?;
-            Ok(result)
+            Ok(SummaryConfig { log, communicat, core })
         } else if Path::try_exists(JSON_CONFIG_FILE_NAME.as_ref())? {
-            let result: SummaryConfig = Figment::from(Serialized::defaults(config))
+            let SummaryConfig { log, communicat, core }: SummaryConfig = Figment::from(Serialized::defaults(config))
                 .merge(Json::file(JSON_CONFIG_FILE_NAME))
                 .extract()?;
-            Ok(result)
+            Ok(SummaryConfig { log, communicat, core })
         } else {
             config.communicat.grpc.enable = false;
             config.communicat.multicast.enable = false;
 
-            let mut config_file = File::create(TOML_CONFIG_FILE_NAME)?;
+            let mut config_file: File = File::create(TOML_CONFIG_FILE_NAME)?;
             config_file.write_all(toml::to_string_pretty(&config)?.as_bytes())?;
             config_file.flush()?;
             Ok(config)
-        };
+        }
     }
 }

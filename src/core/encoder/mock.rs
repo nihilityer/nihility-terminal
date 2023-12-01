@@ -15,12 +15,12 @@ impl InstructEncoder for MockInstructEncoder {
             "Mock Instruct Encoder Init Params: {:?}, {:?}",
             model_path, model_name
         );
-        return Ok(MockInstructEncoder::default());
+        Ok(MockInstructEncoder::default())
     }
 
     fn encode(&mut self, input: String) -> Result<Vec<f32>> {
         warn!("Use Mock Instruct Encoder to encode, input: {:?}", input);
-        return Err(anyhow!("This Instruct Encoder Cannot Encode"));
+        Err(anyhow!("This Instruct Encoder Cannot Encode"))
     }
 
     fn encode_size(&self) -> u64 {

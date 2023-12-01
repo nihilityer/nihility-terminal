@@ -14,7 +14,7 @@ use crate::communicat::windows_named_pipe::WindowsNamedPipeProcessor;
 use crate::config::CommunicatConfig;
 use crate::entity::instruct::InstructEntity;
 use crate::entity::manipulate::ManipulateEntity;
-use crate::entity::module::ModuleOperate;
+use crate::entity::submodule::ModuleOperate;
 use crate::CANCELLATION_TOKEN;
 
 pub mod grpc;

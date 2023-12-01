@@ -49,8 +49,7 @@ impl InstructEncoder for SentenceTransformers {
                 .get_ids()
                 .iter()
                 .map(|i| *i as i64)
-                .collect::<Vec<_>>()
-                .into_iter(),
+                .collect::<Vec<_>>(),
         )
         .insert_axis(Axis(0));
 
@@ -59,8 +58,7 @@ impl InstructEncoder for SentenceTransformers {
                 .get_type_ids()
                 .iter()
                 .map(|i| *i as i64)
-                .collect::<Vec<_>>()
-                .into_iter(),
+                .collect::<Vec<_>>(),
         )
         .insert_axis(Axis(0));
 
@@ -69,8 +67,7 @@ impl InstructEncoder for SentenceTransformers {
                 .get_attention_mask()
                 .iter()
                 .map(|i| *i as i64)
-                .collect::<Vec<_>>()
-                .into_iter(),
+                .collect::<Vec<_>>(),
         )
         .insert_axis(Axis(0));
 
@@ -85,16 +82,16 @@ impl InstructEncoder for SentenceTransformers {
         let encode_result = generated_tokens.view();
         let encode_result = encode_result.deref().index_axis(Axis(0), 0);
 
-        if let Some(result) = encode_result.mean_axis(Axis(0)) {
-            let result = result.iter().cloned().into_iter().collect::<Vec<f32>>();
+        return if let Some(result) = encode_result.mean_axis(Axis(0)) {
+            let result = result.iter().cloned().collect::<Vec<f32>>();
             debug!("Encode Result Len:{:?}", result.len());
-            return Ok(result);
+            Ok(result)
         } else {
-            return Err(anyhow!("Encode Result Transform Error"));
+            Err(anyhow!("Encode Result Transform Error"))
         }
     }
 
     fn encode_size(&self) -> u64 {
-        return ENCODE_SIZE.clone();
+        ENCODE_SIZE
     }
 }

@@ -38,11 +38,8 @@ async fn manager_manipulate(
     info!("Start Receive Manipulate");
     while let Some(manipulate) = manipulate_receiver.recv().await {
         info!("Get Manipulate：{:?}", &manipulate);
-        match manipulate.manipulate_type {
-            ManipulateType::OfflineType => {
-                error!("Offline Type Manipulate Cannot Forward")
-            }
-            _ => {}
+        if manipulate.manipulate_type == ManipulateType::OfflineType {
+            error!("Offline Type Manipulate Cannot Forward")
         }
         let mut locked_module_map = SUBMODULE_MAP.lock().await;
         if let Some(module) = locked_module_map.get_mut(manipulate.use_module_name.as_str()) {
