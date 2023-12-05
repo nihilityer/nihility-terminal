@@ -4,14 +4,14 @@ use tokio::spawn;
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 use tracing::{debug, error, info, warn};
 
-use crate::entity::instruct::InstructEntity;
+use crate::entity::instruct::TextInstructEntity;
 use crate::CANCELLATION_TOKEN;
 
 use super::{INSTRUCT_ENCODER, INSTRUCT_MANAGER, SUBMODULE_MAP};
 
 pub(super) fn start(
     shutdown_sender: UnboundedSender<String>,
-    instruct_receiver: UnboundedReceiver<InstructEntity>,
+    instruct_receiver: UnboundedReceiver<TextInstructEntity>,
 ) {
     spawn(async move {
         if let Err(e) = manager_instruct(instruct_receiver).await {
@@ -32,7 +32,7 @@ pub(super) fn start(
 ///
 /// 3、转发指令出现错误时选择性重试
 pub(super) async fn manager_instruct(
-    mut instruct_receiver: UnboundedReceiver<InstructEntity>,
+    mut instruct_receiver: UnboundedReceiver<TextInstructEntity>,
 ) -> Result<()> {
     info!("Start Receive Instruct");
     while let Some(instruct) = instruct_receiver.recv().await {

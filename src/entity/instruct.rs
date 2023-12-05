@@ -1,29 +1,52 @@
-use nihility_common::instruct::{InstructReq, InstructType};
+use nihility_common::instruct::{InstructInfo, InstructType, TextInstruct};
 
-/// 核心心模块内部传递的指令实体
 #[derive(Debug)]
-pub struct InstructEntity {
+pub struct InstructInfoEntity {
     pub instruct_type: InstructType,
-    pub instruct: String,
     pub receive_manipulate_submodule: String,
 }
 
-impl InstructEntity {
+/// 核心心模块内部传递的指令实体
+#[derive(Debug)]
+pub struct TextInstructEntity {
+    pub info: Option<InstructInfoEntity>,
+    pub instruct: String,
+}
+
+impl TextInstructEntity {
     /// 通过外部请求实体创建内部指令实体
-    pub fn create_by_req(req: InstructReq) -> Self {
-        InstructEntity {
-            instruct_type: req.instruct_type(),
-            instruct: req.instruct,
-            receive_manipulate_submodule: req.receive_manipulate_submodule,
+    pub fn create_by_req(req: TextInstruct) -> Self {
+        if let Some(info) = req.info {
+            TextInstructEntity {
+                info: Some(InstructInfoEntity {
+                    instruct_type: info.instruct_type(),
+                    receive_manipulate_submodule: info.receive_manipulate_submodule,
+                }),
+                instruct: req.instruct,
+            }
+        } else {
+            TextInstructEntity {
+                info: None,
+                instruct: req.instruct,
+            }
         }
     }
 
     /// 由指令创建请求实体用于发送
-    pub fn create_req(self) -> InstructReq {
-        InstructReq {
-            instruct_type: self.instruct_type.into(),
-            instruct: self.instruct,
-            receive_manipulate_submodule: self.receive_manipulate_submodule,
+    pub fn create_req(self) -> TextInstruct {
+        if let Some(info) = self.info {
+            TextInstruct {
+                info: Some(InstructInfo {
+                    instruct_type: info.instruct_type.into(),
+                    receive_manipulate_submodule: info.receive_manipulate_submodule,
+                }),
+                instruct: self.instruct,
+            }
+        } else {
+            TextInstruct {
+                info: None,
+                instruct: self.instruct,
+            }
         }
     }
 }

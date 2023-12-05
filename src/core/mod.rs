@@ -7,8 +7,8 @@ use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender, WeakUnboundedSender}
 use tracing::info;
 
 use crate::config::CoreConfig;
-use crate::entity::instruct::InstructEntity;
-use crate::entity::manipulate::ManipulateEntity;
+use crate::entity::instruct::TextInstructEntity;
+use crate::entity::manipulate::SimpleManipulateEntity;
 use crate::entity::submodule::{ModuleOperate, Submodule};
 
 pub mod encoder;
@@ -34,8 +34,8 @@ pub async fn core_start(
     shutdown_sender: UnboundedSender<String>,
     module_operate_sender: WeakUnboundedSender<ModuleOperate>,
     module_operate_receiver: UnboundedReceiver<ModuleOperate>,
-    instruct_receiver: UnboundedReceiver<InstructEntity>,
-    manipulate_receiver: UnboundedReceiver<ManipulateEntity>,
+    instruct_receiver: UnboundedReceiver<TextInstructEntity>,
+    manipulate_receiver: UnboundedReceiver<SimpleManipulateEntity>,
 ) -> Result<()> {
     info!("Core Start Init");
 
