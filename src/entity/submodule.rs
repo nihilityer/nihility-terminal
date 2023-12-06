@@ -1,15 +1,12 @@
 use std::collections::HashMap;
-use std::time::{SystemTime, UNIX_EPOCH};
 
 use anyhow::{anyhow, Result};
-use nihility_common::instruct::instruct_client::InstructClient;
-use nihility_common::manipulate::manipulate_client::ManipulateClient;
 use nihility_common::response_code::RespCode;
 use nihility_common::submodule::{ReceiveType, SubmoduleReq, SubmoduleType};
 use tracing::debug;
 use SubmoduleType::{GrpcType, HttpType, PipeType, WindowsNamedPipeType};
 
-use crate::communicat::mock::{MockInstructClient, MockManipulateClient};
+use crate::communicat::grpc;
 #[cfg(unix)]
 use crate::communicat::pipe::{PipeUnixInstructClient, PipeUnixManipulateClient};
 #[cfg(windows)]
@@ -20,7 +17,6 @@ use crate::communicat::{SendInstructOperate, SendManipulateOperate};
 use crate::entity::instruct::TextInstructEntity;
 use crate::entity::manipulate::SimpleManipulateEntity;
 
-const GRPC_CONN_ADDR_FIELD: &str = "grpc_addr";
 #[cfg(windows)]
 // const INSTRUCT_WINDOWS_NAMED_PIPE_FIELD: &str = "instruct_windows_named_pipe";
 #[cfg(windows)]
@@ -61,8 +57,8 @@ pub struct Submodule {
     pub sub_module_type: SubmoduleType,
     pub receive_type: ReceiveType,
     pub heartbeat_time: u64,
-    instruct_client: Box<dyn SendInstructOperate + Send + Sync>,
-    manipulate_client: Box<dyn SendManipulateOperate + Send + Sync>,
+    pub(crate) instruct_client: Box<dyn SendInstructOperate + Send + Sync>,
+    pub(crate) manipulate_client: Box<dyn SendManipulateOperate + Send + Sync>,
 }
 
 impl ModuleOperate {
@@ -101,7 +97,7 @@ impl Submodule {
     /// 统一实现由注册消息创建Module
     pub async fn create_by_operate(operate: ModuleOperate) -> Result<Self> {
         match operate.submodule_type {
-            GrpcType => Ok(Self::create_grpc_module(operate).await?),
+            GrpcType => Ok(grpc::create_grpc_module(operate).await?),
             PipeType => {
                 #[cfg(unix)]
                 return Ok(Self::create_pipe_module(operate)?);
@@ -212,56 +208,6 @@ impl Submodule {
         //     manipulate_client,
         // })
         Err(anyhow!("unimplemented!!!"))
-    }
-
-    /// 创建grpc通信的子模块
-    ///
-    /// 连接参数需要具有`grpc_addr`参数
-    async fn create_grpc_module(operate: ModuleOperate) -> Result<Submodule> {
-        debug!("Start Create Grpc Submodule By {:?}", &operate);
-        if operate.conn_params.get(GRPC_CONN_ADDR_FIELD).is_none() {
-            return Err(anyhow!(
-                "Create {:?} Type Submodule Error, ModuleOperate Missing {:?} Filed",
-                &operate.submodule_type,
-                GRPC_CONN_ADDR_FIELD
-            ));
-        }
-        let grpc_addr = operate.conn_params.get(GRPC_CONN_ADDR_FIELD).unwrap();
-
-        let mut instruct_client: Box<dyn SendInstructOperate + Send + Sync> =
-            Box::<MockInstructClient>::default();
-        let mut manipulate_client: Box<dyn SendManipulateOperate + Send + Sync> =
-            Box::<MockManipulateClient>::default();
-        match operate.receive_type {
-            ReceiveType::DefaultType => {
-                instruct_client = Box::new(InstructClient::connect(grpc_addr.to_string()).await?);
-                manipulate_client =
-                    Box::new(ManipulateClient::connect(grpc_addr.to_string()).await?);
-            }
-            ReceiveType::JustInstructType => {
-                instruct_client = Box::new(InstructClient::connect(grpc_addr.to_string()).await?);
-            }
-            ReceiveType::JustManipulateType => {
-                manipulate_client =
-                    Box::new(ManipulateClient::connect(grpc_addr.to_string()).await?);
-            }
-        }
-
-        let mut instruct_map = HashMap::<String, String>::new();
-        for instruct in operate.default_instruct {
-            instruct_map.insert(instruct, String::new());
-        }
-        let timestamp = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs();
-        debug!("Create Grpc Submodule {:?} Success", &operate.name);
-        Ok(Submodule {
-            name: operate.name,
-            default_instruct_map: instruct_map,
-            sub_module_type: operate.submodule_type,
-            receive_type: operate.receive_type,
-            heartbeat_time: timestamp,
-            instruct_client,
-            manipulate_client,
-        })
     }
 
     /// 模块发送指令由此方法统一执行
