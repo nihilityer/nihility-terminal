@@ -1,12 +1,10 @@
 use std::collections::HashMap;
 
-use anyhow::{anyhow, Result};
+use anyhow::Result;
 use nihility_common::response_code::RespCode;
 use nihility_common::submodule::{ReceiveType, SubmoduleReq, SubmoduleType};
 use tracing::debug;
-use SubmoduleType::{GrpcType, HttpType, PipeType, WindowsNamedPipeType};
 
-use crate::communicat::grpc;
 #[cfg(unix)]
 use crate::communicat::pipe::{PipeUnixInstructClient, PipeUnixManipulateClient};
 #[cfg(windows)]
@@ -14,7 +12,7 @@ use crate::communicat::pipe::{PipeUnixInstructClient, PipeUnixManipulateClient};
 //     WindowsNamedPipeInstructClient, WindowsNamedPipeManipulateClient,
 // };
 use crate::communicat::{SendInstructOperate, SendManipulateOperate};
-use crate::entity::instruct::TextInstructEntity;
+use crate::entity::instruct::InstructEntity;
 use crate::entity::manipulate::SimpleManipulateEntity;
 
 #[cfg(windows)]
@@ -30,13 +28,13 @@ const MANIPULATE_FIELD: &str = "manipulate_pipe";
 #[derive(Debug)]
 pub enum OperateType {
     /// 注册当前模块
-    REGISTER,
+    Register,
     /// 注销当前模块
-    OFFLINE,
+    Offline,
     /// 当前模块心跳信息
-    HEARTBEAT,
+    Heartbeat,
     /// 更新当前模块
-    UPDATE,
+    Update,
 }
 
 /// 操作子模块消息结构体
@@ -94,126 +92,12 @@ impl ModuleOperate {
 }
 
 impl Submodule {
-    /// 统一实现由注册消息创建Module
-    pub async fn create_by_operate(operate: ModuleOperate) -> Result<Self> {
-        match operate.submodule_type {
-            GrpcType => Ok(grpc::create_grpc_module(operate).await?),
-            PipeType => {
-                #[cfg(unix)]
-                return Ok(Self::create_pipe_module(operate)?);
-                #[cfg(windows)]
-                Err(anyhow!("This OS Cannot Create PipeType Submodule"))
-            }
-            WindowsNamedPipeType => {
-                #[cfg(unix)]
-                return Err(anyhow!(
-                    "This OS Cannot Create WindowsNamedPipeType Submodule"
-                ));
-                #[cfg(windows)]
-                Ok(Self::create_windows_named_pipe_module(operate)?)
-            }
-            HttpType => Err(anyhow!("This Submodule Type Not Support Yet")),
-        }
-    }
-
-    /// 创建pipe通信的子模块
-    #[cfg(unix)]
-    fn create_pipe_module(operate: ModuleOperate) -> Result<Submodule> {
-        debug!("Start Create Pipe Submodule By {:?}", &operate);
-        if let None = operate.conn_params.get(INSTRUCT_PIPE_FIELD) {
-            return Err(anyhow!(
-                "Create {:?} Type Submodule Error, ModuleOperate Missing {:?} Filed",
-                &operate.submodule_type,
-                INSTRUCT_PIPE_FIELD
-            ));
-        }
-        if let None = operate.conn_params.get(MANIPULATE_PIPE_FIELD) {
-            return Err(anyhow!(
-                "Create {:?} Type Submodule Error, ModuleOperate Missing {:?} Filed",
-                &operate.submodule_type,
-                MANIPULATE_PIPE_FIELD
-            ));
-        }
-        let instruct_path = operate.conn_params.get(INSTRUCT_PIPE_FIELD).unwrap();
-        let manipulate_path = operate.conn_params.get(MANIPULATE_PIPE_FIELD).unwrap();
-        let instruct_client = Box::new(PipeUnixInstructClient::init(instruct_path)?);
-        let manipulate_client = Box::new(PipeUnixManipulateClient::init(manipulate_path)?);
-        let mut instruct_map = HashMap::<String, String>::new();
-        for instruct in operate.default_instruct {
-            instruct_map.insert(instruct, String::new());
-        }
-        let timestamp = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs();
-        debug!("Create Pipe Submodule {:?} Success", &operate.name);
-        Ok(Submodule {
-            name: operate.name,
-            default_instruct_map: instruct_map,
-            sub_module_type: operate.submodule_type,
-            heartbeat_time: timestamp,
-            instruct_client,
-            manipulate_client,
-        })
-    }
-
-    /// 创建WindowsNamedPipe通信的子模块
-    #[cfg(windows)]
-    fn create_windows_named_pipe_module(operate: ModuleOperate) -> Result<Submodule> {
-        // debug!(
-        //     "Start Create Windows Named Pipe Submodule By {:?}",
-        //     &operate
-        // );
-        // if operate.conn_params.get(INSTRUCT_WINDOWS_NAMED_PIPE_FIELD).is_none() {
-        //     return Err(anyhow!(
-        //         "Create {:?} Type Submodule Error, ModuleOperate Missing {:?} Filed",
-        //         &operate.submodule_type,
-        //         INSTRUCT_WINDOWS_NAMED_PIPE_FIELD
-        //     ));
-        // }
-        // if operate.conn_params.get(MANIPULATE_WINDOWS_NAMED_PIPE_FIELD).is_none() {
-        //     return Err(anyhow!(
-        //         "Create {:?} Type Submodule Error, ModuleOperate Missing {:?} Filed",
-        //         &operate.submodule_type,
-        //         MANIPULATE_WINDOWS_NAMED_PIPE_FIELD
-        //     ));
-        // }
-        // let instruct_path = operate
-        //     .conn_params
-        //     .get(INSTRUCT_WINDOWS_NAMED_PIPE_FIELD)
-        //     .unwrap();
-        // let manipulate_path = operate
-        //     .conn_params
-        //     .get(MANIPULATE_WINDOWS_NAMED_PIPE_FIELD)
-        //     .unwrap();
-        // let instruct_client = Box::new(WindowsNamedPipeInstructClient::init(
-        //     instruct_path.to_string(),
-        // )?);
-        // let manipulate_client = Box::new(WindowsNamedPipeManipulateClient::init(
-        //     manipulate_path.to_string(),
-        // )?);
-        // let mut instruct_map = HashMap::<String, String>::new();
-        // for instruct in operate.default_instruct {
-        //     instruct_map.insert(instruct, String::new());
-        // }
-        // let timestamp = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs();
-        // debug!(
-        //     "Create Windows Named Pipe Submodule {:?} Success",
-        //     &operate.name
-        // );
-        // Ok(Submodule {
-        //     name: operate.name,
-        //     default_instruct_map: instruct_map,
-        //     sub_module_type: operate.submodule_type,
-        //     receive_type: operate.receive_type,
-        //     heartbeat_time: timestamp,
-        //     instruct_client,
-        //     manipulate_client,
-        // })
-        Err(anyhow!("unimplemented!!!"))
-    }
-
     /// 模块发送指令由此方法统一执行
-    pub async fn send_instruct(&mut self, instruct: TextInstructEntity) -> Result<RespCode> {
+    pub async fn send_instruct(&mut self, instruct: InstructEntity) -> Result<RespCode> {
         debug!("Send Instruct Client Type: {:?}", self.sub_module_type);
-        self.instruct_client.send(instruct.create_req()).await
+        self.instruct_client
+            .send_text(instruct.create_text_type_req()?)
+            .await
     }
 
     /// 模块发送操作由此模块统一执行

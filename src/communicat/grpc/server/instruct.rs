@@ -6,14 +6,14 @@ use tonic::{Request, Response, Status, Streaming};
 use tracing::error;
 
 use crate::communicat::grpc::server::StreamResp;
-use crate::entity::instruct::TextInstructEntity;
+use crate::entity::instruct::InstructEntity;
 
 pub struct InstructImpl {
-    instruct_sender: UnboundedSender<TextInstructEntity>,
+    instruct_sender: UnboundedSender<InstructEntity>,
 }
 
 impl InstructImpl {
-    pub fn init(sender: UnboundedSender<TextInstructEntity>) -> Self {
+    pub fn init(sender: UnboundedSender<InstructEntity>) -> Self {
         InstructImpl {
             instruct_sender: sender,
         }
@@ -28,7 +28,7 @@ impl Instruct for InstructImpl {
     ) -> Result<Response<Resp>, Status> {
         match self
             .instruct_sender
-            .send(TextInstructEntity::create_by_req(request.into_inner()))
+            .send(InstructEntity::create_by_req(request.into_inner()))
         {
             Ok(_) => Ok(Response::new(Resp {
                 code: RespCode::Success.into(),

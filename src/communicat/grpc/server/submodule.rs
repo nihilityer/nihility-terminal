@@ -24,7 +24,7 @@ impl Submodule for SubmoduleImpl {
         self.operate_module_sender
             .send(ModuleOperate::create_by_req(
                 request.into_inner(),
-                OperateType::REGISTER,
+                OperateType::Register,
             ))
             .unwrap();
         Ok(Response::new(Resp {
@@ -36,7 +36,7 @@ impl Submodule for SubmoduleImpl {
         self.operate_module_sender
             .send(ModuleOperate::create_by_req(
                 request.into_inner(),
-                OperateType::OFFLINE,
+                OperateType::Offline,
             ))
             .unwrap();
         Ok(Response::new(Resp {
@@ -48,7 +48,7 @@ impl Submodule for SubmoduleImpl {
         self.operate_module_sender
             .send(ModuleOperate::create_by_req(
                 request.into_inner(),
-                OperateType::HEARTBEAT,
+                OperateType::Heartbeat,
             ))
             .unwrap();
         Ok(Response::new(Resp {
@@ -60,7 +60,7 @@ impl Submodule for SubmoduleImpl {
         self.operate_module_sender
             .send(ModuleOperate::create_by_req(
                 request.into_inner(),
-                OperateType::UPDATE,
+                OperateType::Update,
             ))
             .unwrap();
         Ok(Response::new(Resp {

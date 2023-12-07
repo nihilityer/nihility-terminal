@@ -1,12 +1,12 @@
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use anyhow::Result;
-use tokio::{select, spawn};
 use tokio::sync::mpsc::{UnboundedSender, WeakUnboundedSender};
+use tokio::{select, spawn};
 use tracing::{debug, error, info};
 
-use crate::CANCELLATION_TOKEN;
 use crate::entity::submodule::{ModuleOperate, OperateType};
+use crate::CANCELLATION_TOKEN;
 
 use super::{HEARTBEAT_TIME, SUBMODULE_MAP};
 
@@ -45,7 +45,7 @@ async fn manager_heartbeat(
             if now_timestamp - submodule.heartbeat_time > 2 * HEARTBEAT_TIME {
                 info!("Submodule {:?} Heartbeat Exception", &submodule.name);
                 module_operate_sender.upgrade().unwrap().send(
-                    ModuleOperate::create_by_submodule(submodule, OperateType::OFFLINE),
+                    ModuleOperate::create_by_submodule(submodule, OperateType::Offline),
                 )?;
             }
         }

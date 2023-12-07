@@ -7,8 +7,9 @@ use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 use tracing::{debug, error, info};
 use uuid::Uuid;
 
+use crate::communicat::create_submodule;
 use crate::core::instruct_manager::PointPayload;
-use crate::entity::submodule::{ModuleOperate, OperateType, Submodule};
+use crate::entity::submodule::{ModuleOperate, OperateType};
 use crate::CANCELLATION_TOKEN;
 
 use super::{INSTRUCT_ENCODER, INSTRUCT_MANAGER, SUBMODULE_MAP};
@@ -39,7 +40,7 @@ async fn manager_submodule(
     info!("Start Receive ModuleOperate");
     while let Some(module_operate) = module_operate_receiver.recv().await {
         match module_operate.operate_type {
-            OperateType::REGISTER => match register_submodule(module_operate).await {
+            OperateType::Register => match register_submodule(module_operate).await {
                 Ok(register_submodule_name) => {
                     info!("Register Submodule {:?} success", register_submodule_name);
                 }
@@ -47,7 +48,7 @@ async fn manager_submodule(
                     error!("Register Submodule Error: {}", e)
                 }
             },
-            OperateType::OFFLINE => match offline_submodule(module_operate).await {
+            OperateType::Offline => match offline_submodule(module_operate).await {
                 Ok(offline_submodule_name) => {
                     info!("Offline Submodule {:?} success", offline_submodule_name);
                 }
@@ -55,11 +56,11 @@ async fn manager_submodule(
                     error!("Offline Submodule Error: {}", e)
                 }
             },
-            OperateType::HEARTBEAT => {
+            OperateType::Heartbeat => {
                 // 此方法内部抛出的错误无法忽略
                 update_submodule_heartbeat(module_operate).await?;
             }
-            OperateType::UPDATE => match update_submodule(module_operate).await {
+            OperateType::Update => match update_submodule(module_operate).await {
                 Ok(update_submodule_name) => {
                     info!("Update Submodule {:?} success", update_submodule_name);
                 }
@@ -187,7 +188,7 @@ async fn offline_submodule(module_operate: ModuleOperate) -> Result<String> {
 async fn register_submodule(module_operate: ModuleOperate) -> Result<String> {
     info!("start register model：{:?}", &module_operate.name);
     let register_submodule_name = module_operate.name.to_string();
-    let mut submodule = Submodule::create_by_operate(module_operate).await?;
+    let mut submodule = create_submodule(module_operate).await?;
     let mut points = Vec::<PointPayload>::new();
     // 此处操作需要同时获取两个锁，所以只有都获取时才进行操作，否则释放锁等待下次获取锁
     loop {

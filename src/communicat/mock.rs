@@ -15,7 +15,7 @@ pub struct MockManipulateClient;
 
 #[async_trait]
 impl SendInstructOperate for MockInstructClient {
-    async fn send(&mut self, instruct: TextInstruct) -> Result<RespCode> {
+    async fn send_text(&mut self, instruct: TextInstruct) -> Result<RespCode> {
         warn!("Mock Instruct Client Get Instruct: {:?}", instruct);
         return Ok(RespCode::UnableToProcess);
     }

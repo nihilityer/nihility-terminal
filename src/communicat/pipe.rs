@@ -1,12 +1,12 @@
 use async_trait::async_trait;
-use anyhow::{anyhow, Result};
-use tracing::{debug, info};
 use nihility_common::module_info::ModuleInfoReq;
 
 #[cfg(unix)]
+#[cfg(feature = "unix-pipe")]
 pub struct PipeProcessor;
 
 #[cfg(unix)]
+#[cfg(feature = "unix-pipe")]
 impl PipeProcessor {
     pub async fn start(
         pipe_config: PipeConfig,
@@ -154,6 +154,7 @@ impl PipeProcessor {
 }
 
 #[cfg(unix)]
+#[cfg(feature = "unix-pipe")]
 #[async_trait]
 impl SendInstructOperate for PipeUnixInstructClient {
     async fn send(&mut self, instruct: InstructReq) -> Result<RespCode> {
@@ -163,6 +164,7 @@ impl SendInstructOperate for PipeUnixInstructClient {
 }
 
 #[cfg(unix)]
+#[cfg(feature = "unix-pipe")]
 #[async_trait]
 impl SendManipulateOperate for PipeUnixManipulateClient {
     async fn send(&mut self, manipulate: ManipulateReq) -> Result<RespCode> {
@@ -172,16 +174,19 @@ impl SendManipulateOperate for PipeUnixManipulateClient {
 }
 
 #[cfg(unix)]
+#[cfg(feature = "unix-pipe")]
 pub struct PipeUnixInstructClient {
     pub instruct_sender: UnboundedSender,
 }
 
 #[cfg(unix)]
+#[cfg(feature = "unix-pipe")]
 pub struct PipeUnixManipulateClient {
     pub manipulate_sender: UnboundedSender,
 }
 
 #[cfg(unix)]
+#[cfg(feature = "unix-pipe")]
 impl PipeUnixInstructClient {
     pub fn init(path: String) -> Result<Self> {
         debug!("open instruct pipe sender from {}", &path);
@@ -215,6 +220,7 @@ impl PipeUnixInstructClient {
 }
 
 #[cfg(unix)]
+#[cfg(feature = "unix-pipe")]
 impl PipeUnixManipulateClient {
     pub fn init(path: String) -> Result<Self> {
         debug!("open manipulate pipe sender from {}", &path);
@@ -224,10 +230,7 @@ impl PipeUnixManipulateClient {
         })
     }
 
-    pub async fn send_manipulate(
-        &self,
-        manipulate_req: ManipulateReq,
-    ) -> Result<ManipulateResp> {
+    pub async fn send_manipulate(&self, manipulate_req: ManipulateReq) -> Result<ManipulateResp> {
         loop {
             self.manipulate_sender.writable().await?;
             let mut data = vec![0; 1024];
@@ -248,4 +251,43 @@ impl PipeUnixManipulateClient {
 
         Ok(ManipulateResp { status: true })
     }
+}
+
+/// 创建pipe通信的子模块
+#[cfg(unix)]
+#[cfg(feature = "unix-pipe")]
+fn create_pipe_module(operate: ModuleOperate) -> Result<Submodule> {
+    debug!("Start Create Pipe Submodule By {:?}", &operate);
+    if let None = operate.conn_params.get(INSTRUCT_PIPE_FIELD) {
+        return Err(anyhow!(
+            "Create {:?} Type Submodule Error, ModuleOperate Missing {:?} Filed",
+            &operate.submodule_type,
+            INSTRUCT_PIPE_FIELD
+        ));
+    }
+    if let None = operate.conn_params.get(MANIPULATE_PIPE_FIELD) {
+        return Err(anyhow!(
+            "Create {:?} Type Submodule Error, ModuleOperate Missing {:?} Filed",
+            &operate.submodule_type,
+            MANIPULATE_PIPE_FIELD
+        ));
+    }
+    let instruct_path = operate.conn_params.get(INSTRUCT_PIPE_FIELD).unwrap();
+    let manipulate_path = operate.conn_params.get(MANIPULATE_PIPE_FIELD).unwrap();
+    let instruct_client = Box::new(PipeUnixInstructClient::init(instruct_path)?);
+    let manipulate_client = Box::new(PipeUnixManipulateClient::init(manipulate_path)?);
+    let mut instruct_map = HashMap::<String, String>::new();
+    for instruct in operate.default_instruct {
+        instruct_map.insert(instruct, String::new());
+    }
+    let timestamp = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs();
+    debug!("Create Pipe Submodule {:?} Success", &operate.name);
+    Ok(Submodule {
+        name: operate.name,
+        default_instruct_map: instruct_map,
+        sub_module_type: operate.submodule_type,
+        heartbeat_time: timestamp,
+        instruct_client,
+        manipulate_client,
+    })
 }

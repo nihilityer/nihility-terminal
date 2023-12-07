@@ -17,7 +17,7 @@ impl Manipulate for ManipulateImpl {
     async fn send_simple_manipulate(
         &self,
         request: Request<SimpleManipulate>,
-    ) -> std::result::Result<Response<Resp>, Status> {
+    ) -> Result<Response<Resp>, Status> {
         match self
             .manipulate_sender
             .send(SimpleManipulateEntity::create_by_req(request.into_inner()))
@@ -38,7 +38,7 @@ impl Manipulate for ManipulateImpl {
     async fn send_text_display_manipulate(
         &self,
         request: Request<TextDisplayManipulate>,
-    ) -> std::result::Result<Response<Resp>, Status> {
+    ) -> Result<Response<Resp>, Status> {
         todo!()
     }
 
@@ -47,7 +47,7 @@ impl Manipulate for ManipulateImpl {
     async fn send_multiple_text_display_manipulate(
         &self,
         request: Request<Streaming<TextDisplayManipulate>>,
-    ) -> std::result::Result<Response<Self::SendMultipleTextDisplayManipulateStream>, Status> {
+    ) -> Result<Response<Self::SendMultipleTextDisplayManipulateStream>, Status> {
         todo!()
     }
 }

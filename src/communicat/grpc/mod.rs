@@ -12,7 +12,7 @@ use tracing::{debug, error};
 use crate::communicat::mock::{MockInstructClient, MockManipulateClient};
 use crate::communicat::{SendInstructOperate, SendManipulateOperate};
 use crate::config::GrpcConfig;
-use crate::entity::instruct::TextInstructEntity;
+use crate::entity::instruct::InstructEntity;
 use crate::entity::manipulate::SimpleManipulateEntity;
 use crate::entity::submodule::{ModuleOperate, Submodule};
 use crate::CANCELLATION_TOKEN;
@@ -26,7 +26,7 @@ pub(super) fn start(
     grpc_config: GrpcConfig,
     communicat_status_sender: UnboundedSender<String>,
     operate_module_sender: UnboundedSender<ModuleOperate>,
-    instruct_sender: UnboundedSender<TextInstructEntity>,
+    instruct_sender: UnboundedSender<InstructEntity>,
     manipulate_sender: UnboundedSender<SimpleManipulateEntity>,
 ) {
     spawn(async move {

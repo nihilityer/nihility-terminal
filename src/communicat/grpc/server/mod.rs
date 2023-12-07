@@ -15,7 +15,7 @@ use crate::communicat::grpc::server::instruct::InstructImpl;
 use crate::communicat::grpc::server::manipulate::ManipulateImpl;
 use crate::communicat::grpc::server::submodule::SubmoduleImpl;
 use crate::config::GrpcConfig;
-use crate::entity::instruct::TextInstructEntity;
+use crate::entity::instruct::InstructEntity;
 use crate::entity::manipulate::SimpleManipulateEntity;
 use crate::entity::submodule::ModuleOperate;
 use crate::CANCELLATION_TOKEN;
@@ -29,7 +29,7 @@ pub(self) type StreamResp = Pin<Box<dyn Stream<Item = Result<Resp, Status>> + Se
 pub(super) async fn start_server(
     grpc_config: GrpcConfig,
     operate_module_sender: UnboundedSender<ModuleOperate>,
-    instruct_sender: UnboundedSender<TextInstructEntity>,
+    instruct_sender: UnboundedSender<InstructEntity>,
     manipulate_sender: UnboundedSender<SimpleManipulateEntity>,
 ) -> Result<()> {
     if !grpc_config.enable {

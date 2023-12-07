@@ -1,8 +1,9 @@
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use nihility_common::instruct::TextInstruct;
 use nihility_common::manipulate::SimpleManipulate;
 use nihility_common::response_code::RespCode;
+use nihility_common::submodule::SubmoduleType;
 use tokio::spawn;
 use tokio::sync::mpsc::UnboundedSender;
 use tracing::{debug, info};
@@ -12,24 +13,27 @@ use crate::communicat::pipe::PipeProcessor;
 #[cfg(windows)]
 // use crate::communicat::windows_named_pipe::WindowsNamedPipeProcessor;
 use crate::config::CommunicatConfig;
-use crate::entity::instruct::TextInstructEntity;
+use crate::entity::instruct::InstructEntity;
 use crate::entity::manipulate::SimpleManipulateEntity;
-use crate::entity::submodule::ModuleOperate;
+use crate::entity::submodule::{ModuleOperate, Submodule};
 use crate::CANCELLATION_TOKEN;
 
+#[cfg(feature = "grpc")]
 pub mod grpc;
 pub mod mock;
 mod multicast;
 #[cfg(unix)]
+#[cfg(feature = "unix-pipe")]
 pub mod pipe;
 #[cfg(windows)]
+#[cfg(feature = "windows-pipe")]
 pub mod windows_named_pipe;
 
 /// 发送指令特征
 #[async_trait]
 pub trait SendInstructOperate {
     /// 发送指令
-    async fn send(&mut self, instruct: TextInstruct) -> Result<RespCode>;
+    async fn send_text(&mut self, instruct: TextInstruct) -> Result<RespCode>;
 }
 
 /// 发送操作特征
@@ -39,15 +43,16 @@ pub trait SendManipulateOperate {
     async fn send(&mut self, manipulate: SimpleManipulate) -> Result<RespCode>;
 }
 
-pub fn communicat_module_start(
+pub(crate) fn communicat_module_start(
     config: CommunicatConfig,
     operate_module_sender: UnboundedSender<ModuleOperate>,
-    instruct_sender: UnboundedSender<TextInstructEntity>,
+    instruct_sender: UnboundedSender<InstructEntity>,
     manipulate_sender: UnboundedSender<SimpleManipulateEntity>,
 ) -> Result<()> {
     let (communicat_status_se, mut communicat_status_re) =
         tokio::sync::mpsc::unbounded_channel::<String>();
 
+    #[cfg(feature = "grpc")]
     grpc::start(
         config.grpc.clone(),
         communicat_status_se.clone(),
@@ -57,6 +62,7 @@ pub fn communicat_module_start(
     );
 
     #[cfg(unix)]
+    #[cfg(feature = "unix-pipe")]
     {
         let pipe_config = config.pipe.clone();
         let pipe_communicat_status_sender = communicat_status_se.clone();
@@ -83,12 +89,13 @@ pub fn communicat_module_start(
     }
 
     #[cfg(windows)]
-    // WindowsNamedPipeProcessor::start_processor(
-    //     config.windows_named_pipes.clone(),
-    //     operate_module_sender.clone(),
-    //     instruct_sender.clone(),
-    //     manipulate_sender.clone(),
-    // )?;
+    #[cfg(feature = "windows-pipe")]
+    WindowsNamedPipeProcessor::start_processor(
+        config.windows_named_pipes.clone(),
+        operate_module_sender.clone(),
+        instruct_sender.clone(),
+        manipulate_sender.clone(),
+    )?;
 
     multicast::start(config.multicast.clone(), communicat_status_se.clone());
 
@@ -103,4 +110,33 @@ pub fn communicat_module_start(
         }
     });
     Ok(())
+}
+
+/// 统一实现由注册消息创建Module
+pub(crate) async fn create_submodule(operate: ModuleOperate) -> Result<Submodule> {
+    match operate.submodule_type {
+        #[cfg(feature = "grpc")]
+        SubmoduleType::GrpcType => Ok(grpc::create_grpc_module(operate).await?),
+        #[cfg(feature = "unix-pipe")]
+        SubmoduleType::PipeType => {
+            #[cfg(unix)]
+            return Ok(Self::create_pipe_module(operate)?);
+            #[cfg(windows)]
+            Err(anyhow!("This OS Cannot Create PipeType Submodule"))
+        }
+        #[cfg(feature = "windows-pipe")]
+        SubmoduleType::WindowsNamedPipeType => {
+            #[cfg(unix)]
+            return Err(anyhow!(
+                "This OS Cannot Create WindowsNamedPipeType Submodule"
+            ));
+            #[cfg(windows)]
+            Ok(Self::create_windows_named_pipe_module(operate)?)
+        }
+        SubmoduleType::HttpType => Err(anyhow!("This Submodule Type Not Support Yet")),
+        not_support_type => Err(anyhow!(
+            "This Submodule Type Not Support Yet: {:?}",
+            not_support_type
+        )),
+    }
 }

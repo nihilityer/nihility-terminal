@@ -4,14 +4,15 @@ use tokio::spawn;
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 use tracing::{debug, error, info, warn};
 
-use crate::entity::instruct::TextInstructEntity;
+use crate::entity::instruct::InstructData::Text;
+use crate::entity::instruct::InstructEntity;
 use crate::CANCELLATION_TOKEN;
 
 use super::{INSTRUCT_ENCODER, INSTRUCT_MANAGER, SUBMODULE_MAP};
 
 pub(super) fn start(
     shutdown_sender: UnboundedSender<String>,
-    instruct_receiver: UnboundedReceiver<TextInstructEntity>,
+    instruct_receiver: UnboundedReceiver<InstructEntity>,
 ) {
     spawn(async move {
         if let Err(e) = manager_instruct(instruct_receiver).await {
@@ -32,14 +33,19 @@ pub(super) fn start(
 ///
 /// 3、转发指令出现错误时选择性重试
 pub(super) async fn manager_instruct(
-    mut instruct_receiver: UnboundedReceiver<TextInstructEntity>,
+    mut instruct_receiver: UnboundedReceiver<InstructEntity>,
 ) -> Result<()> {
     info!("Start Receive Instruct");
     while let Some(instruct) = instruct_receiver.recv().await {
         info!("Get Instruct：{:?}", &instruct);
         let mut encoded_instruct: Vec<f32> = Vec::new();
         if let Ok(mut encoder) = INSTRUCT_ENCODER.lock() {
-            encoded_instruct.append(encoder.encode(instruct.instruct.to_string())?.as_mut());
+            if let Text(text) = instruct.instruct.clone() {
+                encoded_instruct.append(encoder.encode(text)?.as_mut());
+            } else {
+                error!("Cannot Forward This Type Instruct");
+                continue;
+            }
         } else {
             return Err(anyhow!("Lock Instruct Encoder Error"));
         }

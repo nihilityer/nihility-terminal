@@ -10,7 +10,7 @@ use crate::communicat::SendInstructOperate;
 
 #[async_trait]
 impl SendInstructOperate for InstructClient<Channel> {
-    async fn send(&mut self, instruct: TextInstruct) -> Result<RespCode> {
+    async fn send_text(&mut self, instruct: TextInstruct) -> Result<RespCode> {
         Ok(self
             .send_text_instruct(Request::new(instruct))
             .await?
