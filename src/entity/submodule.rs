@@ -5,24 +5,9 @@ use nihility_common::response_code::RespCode;
 use nihility_common::submodule::{ReceiveType, SubmoduleReq, SubmoduleType};
 use tracing::debug;
 
-#[cfg(unix)]
-use crate::communicat::pipe::{PipeUnixInstructClient, PipeUnixManipulateClient};
-#[cfg(windows)]
-// use crate::communicat::windows_named_pipe::{
-//     WindowsNamedPipeInstructClient, WindowsNamedPipeManipulateClient,
-// };
 use crate::communicat::{SendInstructOperate, SendManipulateOperate};
 use crate::entity::instruct::InstructEntity;
 use crate::entity::manipulate::SimpleManipulateEntity;
-
-#[cfg(windows)]
-// const INSTRUCT_WINDOWS_NAMED_PIPE_FIELD: &str = "instruct_windows_named_pipe";
-#[cfg(windows)]
-// const MANIPULATE_WINDOWS_NAMED_PIPE_FIELD: &str = "manipulate_windows_named_pipe";
-#[cfg(unix)]
-const INSTRUCT_PIPE_FIELD: &str = "instruct_pipe";
-#[cfg(unix)]
-const MANIPULATE_FIELD: &str = "manipulate_pipe";
 
 /// 操作子模块类型
 #[derive(Debug)]

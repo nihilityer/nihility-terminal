@@ -2,6 +2,11 @@ use async_trait::async_trait;
 use nihility_common::module_info::ModuleInfoReq;
 
 #[cfg(unix)]
+const INSTRUCT_PIPE_FIELD: &str = "instruct_pipe";
+#[cfg(unix)]
+const MANIPULATE_FIELD: &str = "manipulate_pipe";
+
+#[cfg(unix)]
 #[cfg(feature = "unix-pipe")]
 pub struct PipeProcessor;
 

@@ -5,6 +5,12 @@ use nihility_common::manipulate::{ManipulateReq, ManipulateResp};
 use crate::entity::manipulate::ManipulateEntity;
 
 #[cfg(windows)]
+// const INSTRUCT_WINDOWS_NAMED_PIPE_FIELD: &str = "instruct_windows_named_pipe";
+#[cfg(windows)]
+// const MANIPULATE_WINDOWS_NAMED_PIPE_FIELD: &str = "manipulate_windows_named_pipe";
+
+
+#[cfg(windows)]
 #[cfg(feature = "windows-pipe")]
 pub struct WindowsNamedPipeProcessor;
 

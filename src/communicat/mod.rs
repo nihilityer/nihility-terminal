@@ -135,7 +135,7 @@ pub(crate) async fn create_submodule(operate: ModuleOperate) -> Result<Submodule
         }
         SubmoduleType::HttpType => Err(anyhow!("This Submodule Type Not Support Yet")),
         not_support_type => Err(anyhow!(
-            "This Submodule Type Not Support Yet: {:?}",
+            "This Submodule Type Not Support: {:?}",
             not_support_type
         )),
     }
