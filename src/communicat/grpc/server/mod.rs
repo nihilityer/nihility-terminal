@@ -16,7 +16,7 @@ use crate::communicat::grpc::server::manipulate::ManipulateImpl;
 use crate::communicat::grpc::server::submodule::SubmoduleImpl;
 use crate::config::GrpcConfig;
 use crate::entity::instruct::InstructEntity;
-use crate::entity::manipulate::SimpleManipulateEntity;
+use crate::entity::manipulate::ManipulateEntity;
 use crate::entity::submodule::ModuleOperate;
 use crate::CANCELLATION_TOKEN;
 
@@ -30,7 +30,7 @@ pub(super) async fn start_server(
     grpc_config: GrpcConfig,
     operate_module_sender: UnboundedSender<ModuleOperate>,
     instruct_sender: UnboundedSender<InstructEntity>,
-    manipulate_sender: UnboundedSender<SimpleManipulateEntity>,
+    manipulate_sender: UnboundedSender<ManipulateEntity>,
 ) -> Result<()> {
     if !grpc_config.enable {
         return Ok(());

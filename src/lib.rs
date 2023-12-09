@@ -9,7 +9,7 @@ use tracing::info;
 
 use crate::config::SummaryConfig;
 use crate::entity::instruct::InstructEntity;
-use crate::entity::manipulate::SimpleManipulateEntity;
+use crate::entity::manipulate::ManipulateEntity;
 use crate::entity::submodule::ModuleOperate;
 use crate::log::Log;
 
@@ -34,7 +34,7 @@ impl NihilityTerminal {
         let (shutdown_se, mut shutdown_re) = mpsc::unbounded_channel::<String>();
         let (module_operate_se, module_operate_re) = mpsc::unbounded_channel::<ModuleOperate>();
         let (instruct_se, instruct_re) = mpsc::unbounded_channel::<InstructEntity>();
-        let (manipulate_se, manipulate_re) = mpsc::unbounded_channel::<SimpleManipulateEntity>();
+        let (manipulate_se, manipulate_re) = mpsc::unbounded_channel::<ManipulateEntity>();
 
         communicat::communicat_module_start(
             summary_config.communicat.clone(),

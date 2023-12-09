@@ -5,14 +5,14 @@ use tokio::spawn;
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 use tracing::{debug, error, info};
 
-use crate::entity::manipulate::SimpleManipulateEntity;
+use crate::entity::manipulate::ManipulateEntity;
 use crate::CANCELLATION_TOKEN;
 
-use super::SUBMODULE_MAP;
+use super::{SUBMODULE_MAP, DEFAULT_MANIPULATE_INFO};
 
 pub(super) fn start(
     shutdown_sender: UnboundedSender<String>,
-    manipulate_receiver: UnboundedReceiver<SimpleManipulateEntity>,
+    manipulate_receiver: UnboundedReceiver<ManipulateEntity>,
 ) {
     spawn(async move {
         if let Err(e) = manager_manipulate(manipulate_receiver).await {
@@ -33,13 +33,13 @@ pub(super) fn start(
 ///
 /// 3、处理特定的错误
 async fn manager_manipulate(
-    mut manipulate_receiver: UnboundedReceiver<SimpleManipulateEntity>,
+    mut manipulate_receiver: UnboundedReceiver<ManipulateEntity>,
 ) -> Result<()> {
     info!("Start Receive Manipulate");
     while let Some(manipulate) = manipulate_receiver.recv().await {
         info!("Get Manipulate：{:?}", &manipulate);
-        let manipulate_info = match manipulate.info {
-            None => continue,
+        let manipulate_info = match &manipulate.info {
+            None => DEFAULT_MANIPULATE_INFO.get().unwrap(),
             Some(info) => info,
         };
         if manipulate_info.manipulate_type == ManipulateType::OfflineType {
@@ -48,7 +48,7 @@ async fn manager_manipulate(
         let mut locked_module_map = SUBMODULE_MAP.lock().await;
         if let Some(module) = locked_module_map.get_mut(manipulate_info.use_module_name.as_str()) {
             match module
-                .send_manipulate(manipulate_info.create_simple_manipulate_entity())
+                .send_manipulate(manipulate)
                 .await
             {
                 Ok(RespCode::Success) => {

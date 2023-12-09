@@ -13,7 +13,7 @@ use crate::communicat::mock::{MockInstructClient, MockManipulateClient};
 use crate::communicat::{SendInstructOperate, SendManipulateOperate};
 use crate::config::GrpcConfig;
 use crate::entity::instruct::InstructEntity;
-use crate::entity::manipulate::SimpleManipulateEntity;
+use crate::entity::manipulate::ManipulateEntity;
 use crate::entity::submodule::{ModuleOperate, Submodule};
 use crate::CANCELLATION_TOKEN;
 
@@ -27,7 +27,7 @@ pub(super) fn start(
     communicat_status_sender: UnboundedSender<String>,
     operate_module_sender: UnboundedSender<ModuleOperate>,
     instruct_sender: UnboundedSender<InstructEntity>,
-    manipulate_sender: UnboundedSender<SimpleManipulateEntity>,
+    manipulate_sender: UnboundedSender<ManipulateEntity>,
 ) {
     spawn(async move {
         if let Err(e) = server::start_server(

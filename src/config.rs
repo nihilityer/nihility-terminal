@@ -48,6 +48,7 @@ pub struct CommunicatConfig {
 pub struct CoreConfig {
     pub module_manager: InstructManagerConfig,
     pub encoder: EncoderConfig,
+    pub default_use_submodule: String,
 }
 
 /// Grpc相关配置
@@ -202,6 +203,7 @@ impl SummaryConfig {
         let core_config = CoreConfig {
             module_manager: module_manager_config,
             encoder: encoder_config,
+            default_use_submodule: "test".to_string(),
         };
 
         #[cfg(windows)]

@@ -1,7 +1,7 @@
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use nihility_common::instruct::TextInstruct;
-use nihility_common::manipulate::SimpleManipulate;
+use nihility_common::manipulate::{SimpleManipulate, TextDisplayManipulate};
 use nihility_common::response_code::RespCode;
 use nihility_common::submodule::SubmoduleType;
 use tokio::spawn;
@@ -14,7 +14,7 @@ use crate::communicat::pipe::PipeProcessor;
 // use crate::communicat::windows_named_pipe::WindowsNamedPipeProcessor;
 use crate::config::CommunicatConfig;
 use crate::entity::instruct::InstructEntity;
-use crate::entity::manipulate::SimpleManipulateEntity;
+use crate::entity::manipulate::ManipulateEntity;
 use crate::entity::submodule::{ModuleOperate, Submodule};
 use crate::CANCELLATION_TOKEN;
 
@@ -39,15 +39,16 @@ pub trait SendInstructOperate {
 /// 发送操作特征
 #[async_trait]
 pub trait SendManipulateOperate {
-    /// 发送操作
-    async fn send(&mut self, manipulate: SimpleManipulate) -> Result<RespCode>;
+    async fn send_simple(&mut self, manipulate: SimpleManipulate) -> Result<RespCode>;
+
+    async fn send_text(&mut self, manipulate: TextDisplayManipulate) -> Result<RespCode>;
 }
 
 pub(crate) fn communicat_module_start(
     config: CommunicatConfig,
     operate_module_sender: UnboundedSender<ModuleOperate>,
     instruct_sender: UnboundedSender<InstructEntity>,
-    manipulate_sender: UnboundedSender<SimpleManipulateEntity>,
+    manipulate_sender: UnboundedSender<ManipulateEntity>,
 ) -> Result<()> {
     let (communicat_status_se, mut communicat_status_re) =
         tokio::sync::mpsc::unbounded_channel::<String>();

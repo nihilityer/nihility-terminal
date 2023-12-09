@@ -1,7 +1,7 @@
 use anyhow::Result;
 use async_trait::async_trait;
 use nihility_common::instruct::TextInstruct;
-use nihility_common::manipulate::SimpleManipulate;
+use nihility_common::manipulate::{SimpleManipulate, TextDisplayManipulate};
 use nihility_common::response_code::RespCode;
 use tracing::warn;
 
@@ -23,7 +23,12 @@ impl SendInstructOperate for MockInstructClient {
 
 #[async_trait]
 impl SendManipulateOperate for MockManipulateClient {
-    async fn send(&mut self, manipulate: SimpleManipulate) -> Result<RespCode> {
+    async fn send_simple(&mut self, manipulate: SimpleManipulate) -> Result<RespCode> {
+        warn!("Mock Manipulate Client Get Manipulate: {:?}", manipulate);
+        return Ok(RespCode::UnableToProcess);
+    }
+
+    async fn send_text(&mut self, manipulate: TextDisplayManipulate) -> Result<RespCode> {
         warn!("Mock Manipulate Client Get Manipulate: {:?}", manipulate);
         return Ok(RespCode::UnableToProcess);
     }

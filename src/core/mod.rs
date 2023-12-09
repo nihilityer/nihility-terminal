@@ -1,14 +1,15 @@
 use std::collections::HashMap;
-use std::sync::Mutex;
+use std::sync::{Mutex, OnceLock};
 
 use anyhow::{anyhow, Result};
 use lazy_static::lazy_static;
+use nihility_common::manipulate::ManipulateType;
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender, WeakUnboundedSender};
 use tracing::info;
 
 use crate::config::CoreConfig;
 use crate::entity::instruct::InstructEntity;
-use crate::entity::manipulate::SimpleManipulateEntity;
+use crate::entity::manipulate::{ManipulateEntity, ManipulateInfoEntity};
 use crate::entity::submodule::{ModuleOperate, Submodule};
 
 pub mod encoder;
@@ -29,15 +30,22 @@ lazy_static! {
         tokio::sync::Mutex::new(Box::<instruct_manager::mock::MockInstructManager>::default());
 }
 
+static DEFAULT_MANIPULATE_INFO: OnceLock<ManipulateInfoEntity> = OnceLock::new();
+
 pub async fn core_start(
     mut core_config: CoreConfig,
     shutdown_sender: UnboundedSender<String>,
     module_operate_sender: WeakUnboundedSender<ModuleOperate>,
     module_operate_receiver: UnboundedReceiver<ModuleOperate>,
     instruct_receiver: UnboundedReceiver<InstructEntity>,
-    manipulate_receiver: UnboundedReceiver<SimpleManipulateEntity>,
+    manipulate_receiver: UnboundedReceiver<ManipulateEntity>,
 ) -> Result<()> {
     info!("Core Start Init");
+
+    DEFAULT_MANIPULATE_INFO.get_or_init(|| ManipulateInfoEntity {
+        manipulate_type: ManipulateType::DefaultType,
+        use_module_name: core_config.default_use_submodule.clone(),
+    });
 
     if let Ok(mut locked_encoder) = INSTRUCT_ENCODER.lock() {
         *locked_encoder = encoder::encoder_builder(&core_config.encoder)?;

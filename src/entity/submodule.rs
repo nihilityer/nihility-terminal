@@ -7,7 +7,7 @@ use tracing::debug;
 
 use crate::communicat::{SendInstructOperate, SendManipulateOperate};
 use crate::entity::instruct::InstructEntity;
-use crate::entity::manipulate::SimpleManipulateEntity;
+use crate::entity::manipulate::{ManipulateData, ManipulateEntity};
 
 /// 操作子模块类型
 #[derive(Debug)]
@@ -88,9 +88,18 @@ impl Submodule {
     /// 模块发送操作由此模块统一执行
     pub async fn send_manipulate(
         &mut self,
-        manipulate: SimpleManipulateEntity,
+        manipulate: ManipulateEntity,
     ) -> Result<RespCode> {
         debug!("Send Manipulate Client Type: {:?}", self.sub_module_type);
-        self.manipulate_client.send(manipulate.create_req()).await
+        match manipulate.manipulate {
+            ManipulateData::Text(_) => {
+                debug!("{:?} Client Send Text Type Manipulate", self.sub_module_type);
+                self.manipulate_client.send_text(manipulate.create_text_type_req()?).await
+            }
+            ManipulateData::None => {
+                debug!("{:?} Client Send Simple Type Manipulate", self.sub_module_type);
+                self.manipulate_client.send_simple(manipulate.create_simple_type_req()?).await
+            }
+        }
     }
 }
