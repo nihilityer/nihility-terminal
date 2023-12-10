@@ -1,6 +1,5 @@
 use anyhow::{anyhow, Result};
 use nihility_common::instruct::{InstructInfo, InstructType, TextInstruct};
-use tracing::error;
 
 use crate::entity::instruct::InstructData::Text;
 
@@ -13,7 +12,6 @@ pub struct InstructInfoEntity {
 #[derive(Debug, Clone)]
 pub enum InstructData {
     Text(String),
-    Image,
 }
 
 /// 核心心模块内部传递的指令实体
@@ -23,51 +21,49 @@ pub struct InstructEntity {
     pub instruct: InstructData,
 }
 
-impl InstructEntity {
-    /// 通过外部请求实体创建内部指令实体
-    pub fn create_by_req(req: TextInstruct) -> Self {
-        if let Some(info) = req.info {
-            InstructEntity {
-                info: Some(InstructInfoEntity {
-                    instruct_type: info.instruct_type(),
-                    receive_manipulate_submodule: info.receive_manipulate_submodule,
-                }),
-                instruct: Text(req.instruct),
-            }
-        } else {
-            InstructEntity {
-                info: None,
-                instruct: Text(req.instruct),
-            }
+impl InstructInfoEntity {
+    pub fn create_by_req_info(req_info: Option<InstructInfo>) -> Option<Self> {
+        match req_info {
+            None => None,
+            Some(info) => Some(InstructInfoEntity {
+                instruct_type: info.instruct_type(),
+                receive_manipulate_submodule: info.receive_manipulate_submodule,
+            }),
         }
     }
 
-    /// 由指令创建请求实体用于发送
+    pub fn create_req_info(self) -> InstructInfo {
+        InstructInfo {
+            instruct_type: self.instruct_type.into(),
+            receive_manipulate_submodule: self.receive_manipulate_submodule,
+        }
+    }
+}
+
+impl InstructEntity {
+    pub fn create_by_text_type_req(req: TextInstruct) -> Self {
+        InstructEntity {
+            info: InstructInfoEntity::create_by_req_info(req.info),
+            instruct: Text(req.instruct),
+        }
+    }
+
     pub fn create_text_type_req(self) -> Result<TextInstruct> {
-        if let Text(instruct) = self.instruct {
-            if let Some(info) = self.info {
-                Ok(TextInstruct {
-                    info: Some(InstructInfo {
-                        instruct_type: info.instruct_type.into(),
-                        receive_manipulate_submodule: info.receive_manipulate_submodule,
-                    }),
-                    instruct,
-                })
-            } else {
-                Ok(TextInstruct {
+        match self.instruct {
+            Text(instruct) => match self.info {
+                None => Ok(TextInstruct {
                     info: None,
                     instruct,
-                })
-            }
-        } else {
-            error!(
-                "This Instruct Entity Cannot Create TextInstruct: {:?}",
-                self
-            );
-            Err(anyhow!(
-                "This Instruct Entity Cannot Create TextInstruct: {:?}",
-                self
-            ))
+                }),
+                Some(info) => Ok(TextInstruct {
+                    info: Some(info.create_req_info()),
+                    instruct,
+                }),
+            },
+            data_type => Err(anyhow!(
+                "This Manipulate Entity Is In Other Type, Please Create {:?} Type Req",
+                data_type
+            )),
         }
     }
 }

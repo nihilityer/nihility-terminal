@@ -24,7 +24,7 @@ mod instruct;
 mod manipulate;
 mod submodule;
 
-pub(self) type StreamResp = Pin<Box<dyn Stream<Item = Result<Resp, Status>> + Send>>;
+type StreamResp = Pin<Box<dyn Stream<Item = Result<Resp, Status>> + Send>>;
 
 pub(super) async fn start_server(
     grpc_config: GrpcConfig,
