@@ -7,7 +7,6 @@ use tracing::info;
 use crate::config::{InstructManagerConfig, InstructManagerType};
 
 mod grpc_qdrant;
-pub mod mock;
 
 pub const ENCODE_SIZE_FIELD: &str = "encode_size";
 

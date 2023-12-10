@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::sync::{Mutex, OnceLock};
 
-use anyhow::{anyhow, Result};
+use anyhow::Result;
 use lazy_static::lazy_static;
 use nihility_common::manipulate::ManipulateType;
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender, WeakUnboundedSender};
@@ -24,12 +24,13 @@ const HEARTBEAT_TIME: u64 = 30;
 lazy_static! {
     static ref SUBMODULE_MAP: tokio::sync::Mutex<HashMap<String, Submodule>> =
         tokio::sync::Mutex::new(HashMap::<String, Submodule>::new());
-    static ref INSTRUCT_ENCODER: Mutex<Box<dyn encoder::InstructEncoder + Send + Sync>> =
-        Mutex::new(Box::<encoder::mock::MockInstructEncoder>::default());
-    static ref INSTRUCT_MANAGER: tokio::sync::Mutex<Box<dyn instruct_manager::InstructManager + Send + Sync>> =
-        tokio::sync::Mutex::new(Box::<instruct_manager::mock::MockInstructManager>::default());
 }
 
+static INSTRUCT_MANAGER: OnceLock<
+    tokio::sync::Mutex<Box<dyn instruct_manager::InstructManager + Send + Sync>>,
+> = OnceLock::new();
+static INSTRUCT_ENCODER: OnceLock<Mutex<Box<dyn encoder::InstructEncoder + Send + Sync>>> =
+    OnceLock::new();
 static DEFAULT_MANIPULATE_INFO: OnceLock<ManipulateInfoEntity> = OnceLock::new();
 
 pub async fn core_start(
@@ -47,22 +48,18 @@ pub async fn core_start(
         use_module_name: core_config.default_use_submodule.clone(),
     });
 
-    if let Ok(mut locked_encoder) = INSTRUCT_ENCODER.lock() {
-        *locked_encoder = encoder::encoder_builder(&core_config.encoder)?;
-        let encode_size = locked_encoder.encode_size();
-        core_config.module_manager.config_map.insert(
-            instruct_manager::ENCODE_SIZE_FIELD.to_string(),
-            encode_size.to_string(),
-        );
-    } else {
-        return Err(anyhow!("Lock Instruct Encoder Error"));
-    }
+    let encoder = encoder::encoder_builder(&core_config.encoder)?;
+    core_config.module_manager.config_map.insert(
+        instruct_manager::ENCODE_SIZE_FIELD.to_string(),
+        encoder.encode_size().to_string(),
+    );
+    INSTRUCT_ENCODER.get_or_init(|| {
+        Mutex::new(encoder)
+    });
 
-    {
-        let mut locked_instruct_manager = INSTRUCT_MANAGER.lock().await;
-        *locked_instruct_manager =
-            instruct_manager::build_instruct_manager(core_config.module_manager).await?;
-    }
+    let instruct_manager =
+        instruct_manager::build_instruct_manager(core_config.module_manager).await?;
+    INSTRUCT_MANAGER.get_or_init(|| tokio::sync::Mutex::new(instruct_manager));
 
     manager_submodule::start(shutdown_sender.clone(), module_operate_receiver);
 

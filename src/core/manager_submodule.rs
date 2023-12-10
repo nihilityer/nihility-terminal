@@ -112,7 +112,7 @@ async fn update_submodule(module_operate: ModuleOperate) -> Result<String> {
     }
     // 将新增指令编码
     loop {
-        if let Ok(mut lock_encoder) = INSTRUCT_ENCODER.try_lock() {
+        if let Ok(mut lock_encoder) = INSTRUCT_ENCODER.get().unwrap().try_lock() {
             for (instruct, _) in new_instruct.clone() {
                 new_instruct.insert(
                     instruct.to_string(),
@@ -134,7 +134,7 @@ async fn update_submodule(module_operate: ModuleOperate) -> Result<String> {
                 encode: encode_result.clone(),
             });
         }
-        let locked_instruct_manager = INSTRUCT_MANAGER.lock().await;
+        let locked_instruct_manager = INSTRUCT_MANAGER.get().unwrap().lock().await;
         locked_instruct_manager
             .append_points(module_operate.name.to_string(), insert_points)
             .await?;
@@ -177,6 +177,8 @@ async fn offline_submodule(module_operate: ModuleOperate) -> Result<String> {
         }
     }
     INSTRUCT_MANAGER
+        .get()
+        .unwrap()
         .lock()
         .await
         .remove_points(point_ids)
@@ -193,7 +195,7 @@ async fn register_submodule(module_operate: ModuleOperate) -> Result<String> {
     // 此处操作需要同时获取两个锁，所以只有都获取时才进行操作，否则释放锁等待下次获取锁
     loop {
         let mut locked_submodule_map = SUBMODULE_MAP.lock().await;
-        match INSTRUCT_ENCODER.try_lock() {
+        match INSTRUCT_ENCODER.get().unwrap().try_lock() {
             Ok(mut locked_instruct_encoder) => {
                 debug!("Lock (submodule_map, instruct_encoder) Success");
                 if locked_submodule_map.get(submodule.name.as_str()).is_some() {
@@ -224,6 +226,8 @@ async fn register_submodule(module_operate: ModuleOperate) -> Result<String> {
         }
     }
     INSTRUCT_MANAGER
+        .get()
+        .unwrap()
         .lock()
         .await
         .append_points(register_submodule_name.to_string(), points)

@@ -39,7 +39,7 @@ pub(super) async fn manager_instruct(
     while let Some(instruct) = instruct_receiver.recv().await {
         info!("Get Instruct：{:?}", &instruct);
         let mut encoded_instruct: Vec<f32> = Vec::new();
-        if let Ok(mut encoder) = INSTRUCT_ENCODER.lock() {
+        if let Ok(mut encoder) = INSTRUCT_ENCODER.get().unwrap().lock() {
             if let Text(text) = instruct.instruct.clone() {
                 encoded_instruct.append(encoder.encode(text)?.as_mut());
             } else {
@@ -50,7 +50,7 @@ pub(super) async fn manager_instruct(
             return Err(anyhow!("Lock Instruct Encoder Error"));
         }
 
-        let locked_instruct_manager = INSTRUCT_MANAGER.lock().await;
+        let locked_instruct_manager = INSTRUCT_MANAGER.get().unwrap().lock().await;
         match locked_instruct_manager.search(encoded_instruct).await {
             Ok(module_name) => {
                 drop(locked_instruct_manager);

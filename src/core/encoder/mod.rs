@@ -5,7 +5,6 @@ use EncoderType::SentenceTransformers;
 
 use crate::config::{EncoderConfig, EncoderType};
 
-pub mod mock;
 mod sentence_transformers;
 
 /// 所有指令编码模块全部实现此特征
