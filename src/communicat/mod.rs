@@ -43,8 +43,11 @@ pub trait SendInstructOperate {
 #[async_trait]
 pub trait SendManipulateOperate {
     async fn send_simple(&mut self, manipulate: SimpleManipulate) -> Result<RespCode>;
-
-    async fn send_text(&mut self, manipulate: TextDisplayManipulate) -> Result<RespCode>;
+    async fn send_text_display(&mut self, manipulate: TextDisplayManipulate) -> Result<RespCode>;
+    async fn send_multiple_text_display(
+        &mut self,
+        manipulate_stream: Receiver<TextDisplayManipulate>,
+    ) -> Result<Receiver<RespCode>>;
 }
 
 pub(crate) fn communicat_module_start(

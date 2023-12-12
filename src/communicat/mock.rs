@@ -21,9 +21,12 @@ impl SendInstructOperate for MockInstructClient {
         return Ok(RespCode::UnableToProcess);
     }
 
-    async fn send_multiple_text(&mut self, instruct_stream: Receiver<TextInstruct>) -> Result<Receiver<RespCode>> {
+    async fn send_multiple_text(
+        &mut self,
+        instruct_stream: Receiver<TextInstruct>,
+    ) -> Result<Receiver<RespCode>> {
         warn!("Mock Instruct Client Get Instruct: {:?}", instruct_stream);
-        return Err(anyhow!("Mock Instruct Cannot send_multiple_text"))
+        return Err(anyhow!("Mock Instruct Cannot send_multiple_text"));
     }
 }
 
@@ -34,8 +37,19 @@ impl SendManipulateOperate for MockManipulateClient {
         return Ok(RespCode::UnableToProcess);
     }
 
-    async fn send_text(&mut self, manipulate: TextDisplayManipulate) -> Result<RespCode> {
+    async fn send_text_display(&mut self, manipulate: TextDisplayManipulate) -> Result<RespCode> {
         warn!("Mock Manipulate Client Get Manipulate: {:?}", manipulate);
         return Ok(RespCode::UnableToProcess);
+    }
+
+    async fn send_multiple_text_display(
+        &mut self,
+        manipulate_stream: Receiver<TextDisplayManipulate>,
+    ) -> Result<Receiver<RespCode>> {
+        warn!(
+            "Mock Manipulate Client Get Manipulate: {:?}",
+            manipulate_stream
+        );
+        return Err(anyhow!("Mock Instruct Cannot send_multiple_text_display"));
     }
 }

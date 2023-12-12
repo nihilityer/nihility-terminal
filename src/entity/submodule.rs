@@ -94,7 +94,7 @@ impl Submodule {
         match manipulate.manipulate {
             ManipulateData::Text(_) => {
                 debug!("{:?} Client Send Text Type Manipulate", self.sub_module_type);
-                self.manipulate_client.send_text(manipulate.create_text_type_req()?).await
+                self.manipulate_client.send_text_display(manipulate.create_text_type_req()?).await
             }
             ManipulateData::None => {
                 debug!("{:?} Client Send Simple Type Manipulate", self.sub_module_type);
