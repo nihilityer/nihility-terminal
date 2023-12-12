@@ -5,7 +5,7 @@ use nihility_common::manipulate::{SimpleManipulate, TextDisplayManipulate};
 use nihility_common::response_code::RespCode;
 use nihility_common::submodule::SubmoduleType;
 use tokio::spawn;
-use tokio::sync::mpsc::UnboundedSender;
+use tokio::sync::mpsc::{Receiver, UnboundedSender};
 use tracing::{debug, info};
 
 #[cfg(unix)]
@@ -32,8 +32,11 @@ pub mod windows_named_pipe;
 /// 发送指令特征
 #[async_trait]
 pub trait SendInstructOperate {
-    /// 发送指令
     async fn send_text(&mut self, instruct: TextInstruct) -> Result<RespCode>;
+    async fn send_multiple_text(
+        &mut self,
+        instruct_stream: Receiver<TextInstruct>,
+    ) -> Result<Receiver<RespCode>>;
 }
 
 /// 发送操作特征
