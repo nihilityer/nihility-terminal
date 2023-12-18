@@ -1,2 +1,0 @@
-mod instruct;
-mod manipulate;

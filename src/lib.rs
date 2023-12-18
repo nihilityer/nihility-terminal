@@ -2,26 +2,22 @@ extern crate nihility_common;
 
 use anyhow::Result;
 use lazy_static::lazy_static;
+use nihility_common::{InstructEntity, ManipulateEntity, ModuleOperate};
 use tokio::sync::mpsc;
 use tokio::{select, signal};
 use tokio_util::sync::CancellationToken;
 use tracing::info;
 
 use crate::config::SummaryConfig;
-use crate::entity::instruct::InstructEntity;
-use crate::entity::manipulate::ManipulateEntity;
-use crate::entity::submodule::ModuleOperate;
 use crate::log::Log;
 
-mod communicat;
 mod config;
 mod core;
 mod entity;
 mod log;
+mod server;
 
-lazy_static! {
-    pub(crate) static ref CANCELLATION_TOKEN: CancellationToken = CancellationToken::new();
-}
+static CANCELLATION_TOKEN: CancellationToken = CancellationToken::new();
 
 pub struct NihilityTerminal;
 

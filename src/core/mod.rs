@@ -12,12 +12,12 @@ use crate::entity::instruct::InstructEntity;
 use crate::entity::manipulate::{ManipulateEntity, ManipulateInfoEntity};
 use crate::entity::submodule::{ModuleOperate, Submodule};
 
-pub mod encoder;
-pub mod instruct_manager;
-mod manager_heartbeat;
 mod manager_instruct;
 mod manager_manipulate;
 mod manager_submodule;
+pub mod instruct_encoder;
+pub mod instruct_matcher;
+mod heartbeat_manager;
 
 const HEARTBEAT_TIME: u64 = 30;
 

@@ -51,14 +51,6 @@ pub struct CoreConfig {
     pub default_use_submodule: String,
 }
 
-/// Grpc相关配置
-#[derive(Deserialize, Serialize, Clone)]
-pub struct GrpcConfig {
-    pub enable: bool,
-    pub addr: String,
-    pub port: u32,
-}
-
 /// unix管道通信相关配置
 ///
 /// 注: 仅在unix系统上支持
