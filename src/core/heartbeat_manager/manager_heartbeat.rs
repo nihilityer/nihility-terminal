@@ -1,14 +1,13 @@
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use anyhow::Result;
+use nihility_common::ModuleOperate;
 use tokio::sync::mpsc::{UnboundedSender, WeakUnboundedSender};
 use tokio::{select, spawn};
 use tracing::{debug, error, info};
 
-use crate::entity::submodule::{ModuleOperate, OperateType};
 use crate::CANCELLATION_TOKEN;
 
-use super::{HEARTBEAT_TIME, SUBMODULE_MAP};
 
 pub(super) fn start(
     shutdown_sender: UnboundedSender<String>,

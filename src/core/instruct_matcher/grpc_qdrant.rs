@@ -18,8 +18,8 @@ use qdrant_client::qdrant::{
     VectorsConfig, WithPayloadSelector,
 };
 use tracing::{debug, info};
+use crate::core::instruct_matcher::InstructManager;
 
-use crate::core::instruct_manager::{InstructManager, PointPayload, ENCODE_SIZE_FIELD};
 
 pub const QDRANT_GRPC_ADDR_FIELD: &str = "qdrant_grpc_addr";
 const COLLECTION_NAME: &str = "instruct";

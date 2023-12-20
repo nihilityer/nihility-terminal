@@ -1,14 +1,11 @@
 use anyhow::Result;
-use nihility_common::manipulate::ManipulateType;
-use nihility_common::response_code::RespCode;
+use nihility_common::{ManipulateEntity, ManipulateType, ResponseCode};
 use tokio::spawn;
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 use tracing::{debug, error, info};
 
-use crate::entity::manipulate::ManipulateEntity;
 use crate::CANCELLATION_TOKEN;
 
-use super::{SUBMODULE_MAP, DEFAULT_MANIPULATE_INFO};
 
 pub(super) fn start(
     shutdown_sender: UnboundedSender<String>,
@@ -51,7 +48,7 @@ async fn manager_manipulate(
                 .send_manipulate(manipulate)
                 .await
             {
-                Ok(RespCode::Success) => {
+                Ok(ResponseCode::Success) => {
                     debug!("Send Manipulate Success");
                 }
                 Ok(other_resp_code) => {

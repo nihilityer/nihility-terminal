@@ -1,14 +1,11 @@
 use anyhow::{anyhow, Result};
-use nihility_common::response_code::RespCode;
+use nihility_common::InstructEntity;
 use tokio::spawn;
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 use tracing::{debug, error, info, warn};
 
-use crate::entity::instruct::InstructData::Text;
-use crate::entity::instruct::InstructEntity;
 use crate::CANCELLATION_TOKEN;
 
-use super::{INSTRUCT_ENCODER, INSTRUCT_MANAGER, SUBMODULE_MAP};
 
 pub(super) fn start(
     shutdown_sender: UnboundedSender<String>,

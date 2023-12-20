@@ -6,7 +6,7 @@ use ort::{inputs, CPUExecutionProvider, GraphOptimizationLevel, Session};
 use tokenizers::Tokenizer;
 use tracing::debug;
 
-use crate::core::encoder::InstructEncoder;
+use crate::core::instruct_encoder::InstructEncoder;
 
 const ENCODE_SIZE: u64 = 512;
 
@@ -88,7 +88,7 @@ impl InstructEncoder for SentenceTransformers {
             Ok(result)
         } else {
             Err(anyhow!("Encode Result Transform Error"))
-        }
+        };
     }
 
     fn encode_size(&self) -> u64 {

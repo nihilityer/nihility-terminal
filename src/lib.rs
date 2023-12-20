@@ -1,7 +1,6 @@
 extern crate nihility_common;
 
 use anyhow::Result;
-use lazy_static::lazy_static;
 use nihility_common::{InstructEntity, ManipulateEntity, ModuleOperate};
 use tokio::sync::mpsc;
 use tokio::{select, signal};

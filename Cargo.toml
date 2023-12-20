@@ -22,13 +22,6 @@ ort = {version = "2.0.0-alpha.2", features = ["half", "load-dynamic", "ndarray"]
 tokenizers = "0.15"
 figment = { version = "0.10", features = ["json", "toml", "yaml"] }
 qdrant-client = { version = "1.6.0" }
-nihility-common = { git = "https://github.com/nihilityer/nihility-common", tag = "v0.2.1" }
+nihility-common = { git = "https://github.com/nihilityer/nihility-common", tag = "v0.2.2" }
 serde_json = "1.0"
 uuid = { version = "1.6", features = ["v4", "fast-rng", "macro-diagnostics"] }
-lazy_static = "1.4"
-
-[features]
-default = ["grpc"]
-grpc = []
-windows-pipe = []
-unix-pipe = []
