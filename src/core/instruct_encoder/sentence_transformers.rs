@@ -40,7 +40,7 @@ impl InstructEncoder for SentenceTransformers {
         Ok(encoder)
     }
 
-    fn encode(&mut self, input: String) -> Result<Vec<f32>> {
+    fn encode(&self, input: String) -> Result<Vec<f32>> {
         let encoding = self.tokenizer.encode(input, false).unwrap();
         debug!("Encoding: {:?}", &encoding);
 

@@ -6,7 +6,6 @@ use std::path::Path;
 use anyhow::Result;
 use figment::providers::{Format, Json, Serialized, Toml, Yaml};
 use figment::Figment;
-use local_ip_address::local_ip;
 use serde::{Deserialize, Serialize};
 
 const JSON_CONFIG_FILE_NAME: &str = "config.json";
@@ -35,7 +34,6 @@ pub struct LogConfig {
 /// 交流组件总配置
 #[derive(Deserialize, Serialize, Clone)]
 pub struct CommunicatConfig {
-    pub grpc: GrpcConfig,
     #[cfg(unix)]
     pub pipe: PipeConfig,
     #[cfg(windows)]
@@ -103,24 +101,15 @@ pub struct InstructManagerConfig {
     pub config_map: HashMap<String, String>,
 }
 
-/// 指令编码组件类型枚举
-#[derive(Deserialize, Serialize, Debug, Clone)]
-pub enum EncoderType {
-    SentenceTransformers,
-}
-
 /// 指令编码模块配置
 #[derive(Deserialize, Serialize, Clone)]
 pub struct EncoderConfig {
-    pub encoder_type: EncoderType,
     pub model_path: String,
     pub model_name: String,
 }
 
 impl SummaryConfig {
     fn default() -> Result<Self> {
-        let local_ip_addr = local_ip()?;
-
         let log_config = LogConfig {
             enable: true,
             level: "INFO".to_string(),
@@ -128,12 +117,6 @@ impl SummaryConfig {
             with_line_number: false,
             with_thread_ids: false,
             with_target: false,
-        };
-
-        let grpc_config = GrpcConfig {
-            enable: false,
-            addr: local_ip_addr.to_string(),
-            port: 5050,
         };
 
         #[cfg(unix)]
@@ -164,15 +147,13 @@ impl SummaryConfig {
             manipulate_pipe_name: "manipulate".to_string(),
         };
 
-        let mut multicast_info = grpc_config.addr.to_string();
-        multicast_info.push_str(format!(":{}", &grpc_config.port).as_str());
         let multicast_config = MulticastConfig {
             enable: false,
             bind_addr: "0.0.0.0".to_string(),
             bind_port: 0,
             multicast_group: "224.0.0.123".to_string(),
             multicast_port: 1234,
-            multicast_info,
+            multicast_info: format!("{}:{}", "127.0.0.1", 60),
             interval: 5,
         };
 
@@ -181,13 +162,13 @@ impl SummaryConfig {
             "qdrant_grpc_addr".to_string(),
             "http://192.168.0.100:6334".to_string(),
         );
+        config_map.insert("encode_size".to_string(), "512".to_string());
         let module_manager_config = InstructManagerConfig {
             manager_type: InstructManagerType::GrpcQdrant,
             config_map,
         };
 
         let encoder_config = EncoderConfig {
-            encoder_type: EncoderType::SentenceTransformers,
             model_path: "model".to_string(),
             model_name: "onnx_bge_small_zh".to_string(),
         };
@@ -200,7 +181,6 @@ impl SummaryConfig {
 
         #[cfg(windows)]
         let communicat_config = CommunicatConfig {
-            grpc: grpc_config,
             windows_named_pipes: windows_named_pipes_config,
             multicast: multicast_config,
         };
@@ -224,24 +204,47 @@ impl SummaryConfig {
         let mut config = SummaryConfig::default()?;
 
         if Path::try_exists(TOML_CONFIG_FILE_NAME.as_ref())? {
-            let SummaryConfig { log, communicat, core }: SummaryConfig = Figment::merge(
+            let SummaryConfig {
+                log,
+                communicat,
+                core,
+            }: SummaryConfig = Figment::merge(
                 Figment::from(Serialized::defaults(config)),
-                Toml::file(TOML_CONFIG_FILE_NAME)
+                Toml::file(TOML_CONFIG_FILE_NAME),
             )
-                .extract()?;
-            Ok(SummaryConfig { log, communicat, core })
+            .extract()?;
+            Ok(SummaryConfig {
+                log,
+                communicat,
+                core,
+            })
         } else if Path::try_exists(YAML_CONFIG_FILE_NAME.as_ref())? {
-            let SummaryConfig { log, communicat, core }: SummaryConfig = Figment::from(Serialized::defaults(config))
+            let SummaryConfig {
+                log,
+                communicat,
+                core,
+            }: SummaryConfig = Figment::from(Serialized::defaults(config))
                 .merge(Yaml::file(YAML_CONFIG_FILE_NAME))
                 .extract()?;
-            Ok(SummaryConfig { log, communicat, core })
+            Ok(SummaryConfig {
+                log,
+                communicat,
+                core,
+            })
         } else if Path::try_exists(JSON_CONFIG_FILE_NAME.as_ref())? {
-            let SummaryConfig { log, communicat, core }: SummaryConfig = Figment::from(Serialized::defaults(config))
+            let SummaryConfig {
+                log,
+                communicat,
+                core,
+            }: SummaryConfig = Figment::from(Serialized::defaults(config))
                 .merge(Json::file(JSON_CONFIG_FILE_NAME))
                 .extract()?;
-            Ok(SummaryConfig { log, communicat, core })
+            Ok(SummaryConfig {
+                log,
+                communicat,
+                core,
+            })
         } else {
-            config.communicat.grpc.enable = false;
             config.communicat.multicast.enable = false;
 
             let mut config_file: File = File::create(TOML_CONFIG_FILE_NAME)?;

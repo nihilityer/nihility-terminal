@@ -18,10 +18,11 @@ use qdrant_client::qdrant::{
     VectorsConfig, WithPayloadSelector,
 };
 use tracing::{debug, info};
-use crate::core::instruct_matcher::InstructManager;
+use crate::core::instruct_matcher::{InstructMatcher, PointPayload};
 
 
 pub const QDRANT_GRPC_ADDR_FIELD: &str = "qdrant_grpc_addr";
+const ENCODE_SIZE_FIELD: &str = "encode_size";
 const COLLECTION_NAME: &str = "instruct";
 const MODULE_NAME: &str = "module_name";
 const INSTRUCT: &str = "instruct";
@@ -33,7 +34,7 @@ pub struct GrpcQdrant {
 }
 
 #[async_trait]
-impl InstructManager for GrpcQdrant {
+impl InstructMatcher for GrpcQdrant {
     async fn init(config: HashMap<String, String>) -> Result<Self>
     where
         Self: Sized + Send + Sync,

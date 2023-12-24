@@ -1,25 +1,30 @@
+use std::sync::Arc;
+
 use anyhow::Result;
 use nihility_common::{ManipulateEntity, ManipulateType, ResponseCode};
 use tokio::spawn;
-use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
+use tokio::sync::mpsc::UnboundedReceiver;
 use tracing::{debug, error, info};
 
-use crate::CANCELLATION_TOKEN;
+use crate::core::submodule_store::SubmoduleStore;
+use crate::{CANCELLATION_TOKEN, CLOSE_SENDER};
 
-
-pub(super) fn start(
-    shutdown_sender: UnboundedSender<String>,
+pub fn simple_manipulate_manager_thread(
+    submodule_store: Arc<Box<dyn SubmoduleStore + Send + Sync>>,
     manipulate_receiver: UnboundedReceiver<ManipulateEntity>,
-) {
+) -> Result<()> {
+    let close_sender = CLOSE_SENDER.get().unwrap().upgrade().unwrap();
     spawn(async move {
-        if let Err(e) = manager_manipulate(manipulate_receiver).await {
-            error!("Manipulate Manager Error: {}", e);
+        if let Err(e) = start(submodule_store, manipulate_receiver).await {
+            error!("Manager Manipulate Thread Error: {}", e);
             CANCELLATION_TOKEN.cancel();
         }
-        shutdown_sender
-            .send("Manipulate Manager".to_string())
+        close_sender
+            .send("Manager Manipulate Thread".to_string())
+            .await
             .unwrap();
     });
+    Ok(())
 }
 
 /// 处理操作的接收和转发
@@ -29,25 +34,21 @@ pub(super) fn start(
 /// 2、记录日志
 ///
 /// 3、处理特定的错误
-async fn manager_manipulate(
+async fn start(
+    submodule_store: Arc<Box<dyn SubmoduleStore + Send + Sync>>,
     mut manipulate_receiver: UnboundedReceiver<ManipulateEntity>,
 ) -> Result<()> {
-    info!("Start Receive Manipulate");
+    info!("Manager Manipulate Thread Start");
     while let Some(manipulate) = manipulate_receiver.recv().await {
         info!("Get Manipulate：{:?}", &manipulate);
-        let manipulate_info = match &manipulate.info {
-            None => DEFAULT_MANIPULATE_INFO.get().unwrap(),
-            Some(info) => info,
-        };
-        if manipulate_info.manipulate_type == ManipulateType::OfflineType {
+        if let ManipulateType::OfflineType = &manipulate.info.manipulate_type {
             error!("Offline Type Manipulate Cannot Forward")
         }
-        let mut locked_module_map = SUBMODULE_MAP.lock().await;
-        if let Some(module) = locked_module_map.get_mut(manipulate_info.use_module_name.as_str()) {
-            match module
-                .send_manipulate(manipulate)
-                .await
-            {
+        if let Some(module) = submodule_store
+            .get_and_remove(&manipulate.info.use_module_name)
+            .await?
+        {
+            match module.client.text_display_manipulate(manipulate).await {
                 Ok(ResponseCode::Success) => {
                     debug!("Send Manipulate Success");
                 }
@@ -58,10 +59,11 @@ async fn manager_manipulate(
                     error!("Send Manipulate Error: {}", e);
                 }
             }
+            submodule_store.insert(module).await?;
         } else {
             error!(
                 "Expect Use Submodule Name {:?} Cannot Find In Register Submodule",
-                manipulate_info.use_module_name.to_string()
+                &manipulate.info.use_module_name
             )
         }
     }

@@ -2,11 +2,8 @@ use std::collections::HashMap;
 
 use anyhow::Result;
 use async_trait::async_trait;
-use tracing::info;
 
-use crate::config::{InstructManagerConfig, InstructManagerType};
-
-mod grpc_qdrant;
+pub mod grpc_qdrant;
 
 pub const ENCODE_SIZE_FIELD: &str = "encode_size";
 
@@ -18,7 +15,7 @@ pub struct PointPayload {
 
 /// 所有子模块管理模块都需要实现此特征
 #[async_trait]
-pub trait InstructManager {
+pub trait InstructMatcher {
     /// 初始化指令管理组件
     async fn init(config: HashMap<String, String>) -> Result<Self>
     where
@@ -32,16 +29,4 @@ pub trait InstructManager {
 
     /// 批量移除子模块默认指令编码结果向量点
     async fn remove_points(&self, points: Vec<String>) -> Result<()>;
-}
-
-pub async fn build_instruct_manager(
-    config: InstructManagerConfig,
-) -> Result<Box<dyn InstructManager + Send + Sync>> {
-    info!("Module Manager Type: {:?}", &config.manager_type);
-    match config.manager_type {
-        InstructManagerType::GrpcQdrant => {
-            let instruct_manager = grpc_qdrant::GrpcQdrant::init(config.config_map.clone()).await?;
-            Ok(Box::new(instruct_manager))
-        }
-    }
 }
