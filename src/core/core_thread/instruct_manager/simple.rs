@@ -32,7 +32,7 @@ pub fn simple_instruct_manager_thread(
             CANCELLATION_TOKEN.cancel();
         }
         close_sender
-            .send("Manager Instruct Thread".to_string())
+            .send("Instruct Manager Thread".to_string())
             .await
             .unwrap();
     });
@@ -49,11 +49,10 @@ async fn start(
     while let Some(instruct) = instruct_receiver.recv().await {
         info!("Get Instruct：{:?}", &instruct);
         let mut encoded_instruct: Vec<f32> = Vec::new();
-        if let Text(text) = instruct.instruct.clone() {
-            encoded_instruct.append(instruct_encoder.encode(text)?.as_mut());
-        } else {
-            error!("Cannot Forward This Type Instruct");
-            continue;
+        match &instruct.instruct {
+            Text(text) => {
+                encoded_instruct.append(instruct_encoder.encode(text)?.as_mut());
+            }
         }
 
         match instruct_matcher.search(encoded_instruct).await {

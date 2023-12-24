@@ -10,7 +10,7 @@ pub trait InstructEncoder {
         Self: Sized + Send + Sync;
 
     /// 对指令字符串进行编码
-    fn encode(&self, input: String) -> Result<Vec<f32>>;
+    fn encode(&self, input: &String) -> Result<Vec<f32>>;
 
     /// 获取编码模块编码结果长度
     fn encode_size(&self) -> u64;

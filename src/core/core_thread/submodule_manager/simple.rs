@@ -31,11 +31,11 @@ pub fn simple_submodule_manager_thread(
         )
         .await
         {
-            error!("Submodule Manager Error: {}", e);
+            error!("Simple Submodule Manager Thread Error: {}", e);
             CANCELLATION_TOKEN.cancel();
         }
         close_sender
-            .send("Submodule Manager".to_string())
+            .send("Simple Submodule Manager Thread".to_string())
             .await
             .unwrap();
     });
@@ -53,7 +53,7 @@ async fn start(
     submodule_store: Arc<Box<dyn SubmoduleStore + Send + Sync>>,
     mut module_operate_receiver: UnboundedReceiver<ModuleOperate>,
 ) -> Result<()> {
-    info!("Start Receive ModuleOperate");
+    info!("Simple Submodule Manager Thread Start");
     while let Some(module_operate) = module_operate_receiver.recv().await {
         match module_operate.operate_type {
             OperateType::Register => match register_submodule(
@@ -165,10 +165,7 @@ async fn update_submodule(
     }
     // 将新增指令编码
     for (instruct, _) in new_instruct.clone() {
-        new_instruct.insert(
-            instruct.to_string(),
-            instruct_encoder.encode(instruct.to_string())?,
-        );
+        new_instruct.insert(instruct.to_string(), instruct_encoder.encode(&instruct)?);
     }
     // 将新增的指令分配的point_id存入，然后在qdrant上移除需要删除指令对应的点，最后插入新增指令的点
     let mut insert_points = Vec::<PointPayload>::new();
@@ -263,9 +260,7 @@ async fn register_submodule(
     let register_submodule_name = module_operate.name.to_string();
     let submodule = Submodule::create(&module_operate).await?;
     let mut points = Vec::<PointPayload>::new();
-    if let Some(submodule) = submodule_store
-        .get_and_remove(&module_operate.name)
-        .await? {
+    if let Some(submodule) = submodule_store.get_and_remove(&module_operate.name).await? {
         submodule_store.insert(submodule).await?;
         return Err(anyhow!(
             "The Current Submodule {:?} Is Registered",
@@ -276,7 +271,7 @@ async fn register_submodule(
         Ok(mut default_instruct_map) => {
             let original_default_instruct_map = default_instruct_map.clone();
             for (instruct, _) in original_default_instruct_map.iter() {
-                let encode_result = instruct_encoder.encode(instruct.to_string())?;
+                let encode_result = instruct_encoder.encode(instruct)?;
                 let id = Uuid::new_v4();
                 default_instruct_map.insert(instruct.to_string(), id.to_string());
                 points.push(PointPayload {

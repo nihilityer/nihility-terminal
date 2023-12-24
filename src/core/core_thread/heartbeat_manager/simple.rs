@@ -27,7 +27,7 @@ pub fn simple_heartbeat_manager_thread(
             _ = CANCELLATION_TOKEN.cancelled() => {}
         }
         close_sender
-            .send("Manager Heartbeat Thread".to_string())
+            .send("Heartbeat Manager Thread".to_string())
             .await
             .unwrap();
     });
@@ -41,6 +41,7 @@ async fn start(
     submodule_store: Arc<Box<dyn SubmoduleStore + Send + Sync>>,
     sender: WeakUnboundedSender<ModuleOperate>,
 ) -> Result<()> {
+    info!("Heartbeat Manager Thread Start");
     loop {
         tokio::time::sleep(Duration::from_secs(HEARTBEAT_TIME)).await;
         debug!("Make Sure The Submodule Heartbeat Is Normal");

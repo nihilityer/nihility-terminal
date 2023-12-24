@@ -40,8 +40,8 @@ impl InstructEncoder for SentenceTransformers {
         Ok(encoder)
     }
 
-    fn encode(&self, input: String) -> Result<Vec<f32>> {
-        let encoding = self.tokenizer.encode(input, false).unwrap();
+    fn encode(&self, input: &String) -> Result<Vec<f32>> {
+        let encoding = self.tokenizer.encode(input.to_string(), false).unwrap();
         debug!("Encoding: {:?}", &encoding);
 
         let input_ids = Array1::from_iter(

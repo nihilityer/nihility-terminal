@@ -7,6 +7,8 @@ use anyhow::Result;
 use figment::providers::{Format, Json, Serialized, Toml, Yaml};
 use figment::Figment;
 use serde::{Deserialize, Serialize};
+use crate::core::instruct_matcher::ENCODE_SIZE_FIELD;
+use crate::core::instruct_matcher::grpc_qdrant::QDRANT_GRPC_ADDR_FIELD;
 
 const JSON_CONFIG_FILE_NAME: &str = "config.json";
 const TOML_CONFIG_FILE_NAME: &str = "config.toml";
@@ -159,10 +161,10 @@ impl SummaryConfig {
 
         let mut config_map = HashMap::<String, String>::new();
         config_map.insert(
-            "qdrant_grpc_addr".to_string(),
+            QDRANT_GRPC_ADDR_FIELD.to_string(),
             "http://192.168.0.100:6334".to_string(),
         );
-        config_map.insert("encode_size".to_string(), "512".to_string());
+        config_map.insert(ENCODE_SIZE_FIELD.to_string(), "512".to_string());
         let module_manager_config = InstructManagerConfig {
             manager_type: InstructManagerType::GrpcQdrant,
             config_map,
