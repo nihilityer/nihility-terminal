@@ -5,6 +5,7 @@ use nihility_common::InstructData::Text;
 use nihility_common::{InstructEntity, ResponseCode};
 use tokio::spawn;
 use tokio::sync::mpsc::UnboundedReceiver;
+use tokio::sync::Mutex;
 use tracing::{debug, error, info, warn};
 
 use crate::core::instruct_encoder::InstructEncoder;
@@ -15,7 +16,7 @@ use crate::{CANCELLATION_TOKEN, CLOSE_SENDER};
 pub fn simple_instruct_manager_thread(
     instruct_encoder: Arc<Box<dyn InstructEncoder + Send + Sync>>,
     instruct_matcher: Arc<Box<dyn InstructMatcher + Send + Sync>>,
-    submodule_store: Arc<Box<dyn SubmoduleStore + Send + Sync>>,
+    submodule_store: Arc<Mutex<Box<dyn SubmoduleStore + Send + Sync>>>,
     instruct_receiver: UnboundedReceiver<InstructEntity>,
 ) -> Result<()> {
     let close_sender = CLOSE_SENDER.get().unwrap().upgrade().unwrap();
@@ -42,7 +43,7 @@ pub fn simple_instruct_manager_thread(
 async fn start(
     instruct_encoder: Arc<Box<dyn InstructEncoder + Send + Sync>>,
     instruct_matcher: Arc<Box<dyn InstructMatcher + Send + Sync>>,
-    submodule_store: Arc<Box<dyn SubmoduleStore + Send + Sync>>,
+    submodule_store: Arc<Mutex<Box<dyn SubmoduleStore + Send + Sync>>>,
     mut instruct_receiver: UnboundedReceiver<InstructEntity>,
 ) -> Result<()> {
     info!("Instruct Manager Thread Start");
@@ -57,7 +58,7 @@ async fn start(
 
         match instruct_matcher.search(encoded_instruct).await {
             Ok(module_name) => {
-                if let Some(module) = submodule_store.get_and_remove(&module_name).await? {
+                if let Some(module) = submodule_store.lock().await.get(&module_name).await? {
                     match module.client.text_instruct(instruct).await {
                         Ok(ResponseCode::Success) => {
                             debug!("Forward Instruct Success");
@@ -69,7 +70,6 @@ async fn start(
                             error!("Forward Instruct Error: {}", e);
                         }
                     }
-                    submodule_store.insert(module).await?;
                     continue;
                 }
             }

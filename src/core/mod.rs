@@ -3,6 +3,7 @@ use std::sync::{Arc, OnceLock};
 use anyhow::{anyhow, Result};
 use nihility_common::{InstructEntity, ManipulateEntity, ModuleOperate};
 use tokio::sync::mpsc::UnboundedReceiver;
+use tokio::sync::Mutex;
 
 use crate::core::instruct_encoder::InstructEncoder;
 use crate::core::instruct_matcher::InstructMatcher;
@@ -15,28 +16,28 @@ pub mod submodule_store;
 
 static CORE: OnceLock<NihilityCore> = OnceLock::new();
 
-type HeartbeatManagerFn = dyn Fn(Arc<Box<dyn SubmoduleStore + Send + Sync>>) -> Result<()>;
+type HeartbeatManagerFn = dyn Fn(Arc<Mutex<Box<dyn SubmoduleStore + Send + Sync>>>) -> Result<()>;
 type InstructManagerFn = dyn Fn(
     Arc<Box<dyn InstructEncoder + Send + Sync>>,
     Arc<Box<dyn InstructMatcher + Send + Sync>>,
-    Arc<Box<dyn SubmoduleStore + Send + Sync>>,
+    Arc<Mutex<Box<dyn SubmoduleStore + Send + Sync>>>,
     UnboundedReceiver<InstructEntity>,
 ) -> Result<()>;
 type ManipulateManagerFn = dyn Fn(
-    Arc<Box<dyn SubmoduleStore + Send + Sync>>,
+    Arc<Mutex<Box<dyn SubmoduleStore + Send + Sync>>>,
     UnboundedReceiver<ManipulateEntity>,
 ) -> Result<()>;
 type SubmoduleManagerFn = dyn Fn(
     Arc<Box<dyn InstructEncoder + Send + Sync>>,
     Arc<Box<dyn InstructMatcher + Send + Sync>>,
-    Arc<Box<dyn SubmoduleStore + Send + Sync>>,
+    Arc<Mutex<Box<dyn SubmoduleStore + Send + Sync>>>,
     UnboundedReceiver<ModuleOperate>,
 ) -> Result<()>;
 
 pub struct NihilityCore {
     instruct_encoder: Arc<Box<dyn InstructEncoder + Send + Sync>>,
     instruct_matcher: Arc<Box<dyn InstructMatcher + Send + Sync>>,
-    submodule_store: Arc<Box<dyn SubmoduleStore + Send + Sync>>,
+    submodule_store: Arc<Mutex<Box<dyn SubmoduleStore + Send + Sync>>>,
 }
 
 #[derive(Default)]
@@ -82,7 +83,7 @@ impl NihilityCore {
                 let core = NihilityCore {
                     instruct_encoder: Arc::new(instruct_encoder),
                     instruct_matcher: Arc::new(instruct_matcher),
-                    submodule_store: Arc::new(submodule_store),
+                    submodule_store: Arc::new(Mutex::new(submodule_store)),
                 };
                 core.run_heartbeat_manager_fn(heartbeat_manager_fn)?;
                 core.run_instruct_manager_fn(instruct_manager_fn, instruct_receiver)?;
@@ -205,7 +206,7 @@ impl NihilityCoreBuilder {
 
     pub fn set_heartbeat_manager_fn(
         &mut self,
-        heartbeat_manager_fn: impl Fn(Arc<Box<dyn SubmoduleStore + Send + Sync>>) -> Result<()>
+        heartbeat_manager_fn: impl Fn(Arc<Mutex<Box<dyn SubmoduleStore + Send + Sync>>>) -> Result<()>
             + 'static,
     ) {
         self.heartbeat_manager_fn = Some(Box::new(heartbeat_manager_fn))
@@ -216,7 +217,7 @@ impl NihilityCoreBuilder {
         instruct_manager_fn: impl Fn(
                 Arc<Box<dyn InstructEncoder + Send + Sync>>,
                 Arc<Box<dyn InstructMatcher + Send + Sync>>,
-                Arc<Box<dyn SubmoduleStore + Send + Sync>>,
+                Arc<Mutex<Box<dyn SubmoduleStore + Send + Sync>>>,
                 UnboundedReceiver<InstructEntity>,
             ) -> Result<()>
             + 'static,
@@ -227,7 +228,7 @@ impl NihilityCoreBuilder {
     pub fn set_manipulate_manager_fn(
         &mut self,
         manipulate_manager_fn: impl Fn(
-                Arc<Box<dyn SubmoduleStore + Send + Sync>>,
+                Arc<Mutex<Box<dyn SubmoduleStore + Send + Sync>>>,
                 UnboundedReceiver<ManipulateEntity>,
             ) -> Result<()>
             + 'static,
@@ -240,7 +241,7 @@ impl NihilityCoreBuilder {
         submodule_manager_fn: impl Fn(
                 Arc<Box<dyn InstructEncoder + Send + Sync>>,
                 Arc<Box<dyn InstructMatcher + Send + Sync>>,
-                Arc<Box<dyn SubmoduleStore + Send + Sync>>,
+                Arc<Mutex<Box<dyn SubmoduleStore + Send + Sync>>>,
                 UnboundedReceiver<ModuleOperate>,
             ) -> Result<()>
             + 'static,

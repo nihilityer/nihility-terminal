@@ -4,13 +4,14 @@ use anyhow::Result;
 use nihility_common::{ManipulateEntity, ManipulateType, ResponseCode};
 use tokio::spawn;
 use tokio::sync::mpsc::UnboundedReceiver;
+use tokio::sync::Mutex;
 use tracing::{debug, error, info};
 
 use crate::core::submodule_store::SubmoduleStore;
 use crate::{CANCELLATION_TOKEN, CLOSE_SENDER};
 
 pub fn simple_manipulate_manager_thread(
-    submodule_store: Arc<Box<dyn SubmoduleStore + Send + Sync>>,
+    submodule_store: Arc<Mutex<Box<dyn SubmoduleStore + Send + Sync>>>,
     manipulate_receiver: UnboundedReceiver<ManipulateEntity>,
 ) -> Result<()> {
     let close_sender = CLOSE_SENDER.get().unwrap().upgrade().unwrap();
@@ -35,7 +36,7 @@ pub fn simple_manipulate_manager_thread(
 ///
 /// 3、处理特定的错误
 async fn start(
-    submodule_store: Arc<Box<dyn SubmoduleStore + Send + Sync>>,
+    submodule_store: Arc<Mutex<Box<dyn SubmoduleStore + Send + Sync>>>,
     mut manipulate_receiver: UnboundedReceiver<ManipulateEntity>,
 ) -> Result<()> {
     info!("Manipulate Manager Thread Start");
@@ -45,7 +46,9 @@ async fn start(
             error!("Offline Type Manipulate Cannot Forward")
         }
         if let Some(module) = submodule_store
-            .get_and_remove(&manipulate.info.use_module_name)
+            .lock()
+            .await
+            .get(&manipulate.info.use_module_name)
             .await?
         {
             match module.client.text_display_manipulate(manipulate).await {
@@ -59,7 +62,6 @@ async fn start(
                     error!("Send Manipulate Error: {}", e);
                 }
             }
-            submodule_store.insert(module).await?;
         } else {
             error!(
                 "Expect Use Submodule Name {:?} Cannot Find In Register Submodule",
