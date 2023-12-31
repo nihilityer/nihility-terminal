@@ -2,7 +2,7 @@ use std::sync::{Arc, OnceLock};
 
 use anyhow::{anyhow, Result};
 use nihility_common::{InstructEntity, ManipulateEntity, ModuleOperate};
-use tokio::sync::mpsc::{UnboundedReceiver, WeakUnboundedSender};
+use tokio::sync::mpsc::UnboundedReceiver;
 
 use crate::core::instruct_encoder::InstructEncoder;
 use crate::core::instruct_matcher::InstructMatcher;
@@ -13,8 +13,25 @@ pub mod instruct_encoder;
 pub mod instruct_matcher;
 pub mod submodule_store;
 
-
 static CORE: OnceLock<NihilityCore> = OnceLock::new();
+
+type HeartbeatManagerFn = dyn Fn(Arc<Box<dyn SubmoduleStore + Send + Sync>>) -> Result<()>;
+type InstructManagerFn = dyn Fn(
+    Arc<Box<dyn InstructEncoder + Send + Sync>>,
+    Arc<Box<dyn InstructMatcher + Send + Sync>>,
+    Arc<Box<dyn SubmoduleStore + Send + Sync>>,
+    UnboundedReceiver<InstructEntity>,
+) -> Result<()>;
+type ManipulateManagerFn = dyn Fn(
+    Arc<Box<dyn SubmoduleStore + Send + Sync>>,
+    UnboundedReceiver<ManipulateEntity>,
+) -> Result<()>;
+type SubmoduleManagerFn = dyn Fn(
+    Arc<Box<dyn InstructEncoder + Send + Sync>>,
+    Arc<Box<dyn InstructMatcher + Send + Sync>>,
+    Arc<Box<dyn SubmoduleStore + Send + Sync>>,
+    UnboundedReceiver<ModuleOperate>,
+) -> Result<()>;
 
 pub struct NihilityCore {
     instruct_encoder: Arc<Box<dyn InstructEncoder + Send + Sync>>,
@@ -22,50 +39,18 @@ pub struct NihilityCore {
     submodule_store: Arc<Box<dyn SubmoduleStore + Send + Sync>>,
 }
 
+#[derive(Default)]
 pub struct NihilityCoreBuilder {
     instruct_encoder: Option<Box<dyn InstructEncoder + Send + Sync>>,
     instruct_matcher: Option<Box<dyn InstructMatcher + Send + Sync>>,
     submodule_store: Option<Box<dyn SubmoduleStore + Send + Sync>>,
-    manipulate_sender: Option<WeakUnboundedSender<ModuleOperate>>,
     instruct_receiver: Option<UnboundedReceiver<InstructEntity>>,
     manipulate_receiver: Option<UnboundedReceiver<ManipulateEntity>>,
     module_operate_receiver: Option<UnboundedReceiver<ModuleOperate>>,
-    heartbeat_manager_fn: Option<
-        Box<
-            dyn Fn(
-                Arc<Box<dyn SubmoduleStore + Send + Sync>>,
-                WeakUnboundedSender<ModuleOperate>,
-            ) -> Result<()>,
-        >,
-    >,
-    instruct_manager_fn: Option<
-        Box<
-            dyn Fn(
-                Arc<Box<dyn InstructEncoder + Send + Sync>>,
-                Arc<Box<dyn InstructMatcher + Send + Sync>>,
-                Arc<Box<dyn SubmoduleStore + Send + Sync>>,
-                UnboundedReceiver<InstructEntity>,
-            ) -> Result<()>,
-        >,
-    >,
-    manipulate_manager_fn: Option<
-        Box<
-            dyn Fn(
-                Arc<Box<dyn SubmoduleStore + Send + Sync>>,
-                UnboundedReceiver<ManipulateEntity>,
-            ) -> Result<()>,
-        >,
-    >,
-    submodule_manager_fn: Option<
-        Box<
-            dyn Fn(
-                Arc<Box<dyn InstructEncoder + Send + Sync>>,
-                Arc<Box<dyn InstructMatcher + Send + Sync>>,
-                Arc<Box<dyn SubmoduleStore + Send + Sync>>,
-                UnboundedReceiver<ModuleOperate>,
-            ) -> Result<()>,
-        >,
-    >,
+    heartbeat_manager_fn: Option<Box<HeartbeatManagerFn>>,
+    instruct_manager_fn: Option<Box<InstructManagerFn>>,
+    manipulate_manager_fn: Option<Box<ManipulateManagerFn>>,
+    submodule_manager_fn: Option<Box<SubmoduleManagerFn>>,
 }
 
 impl NihilityCore {
@@ -74,7 +59,6 @@ impl NihilityCore {
             builder.instruct_encoder,
             builder.instruct_matcher,
             builder.submodule_store,
-            builder.manipulate_sender,
             builder.instruct_receiver,
             builder.manipulate_receiver,
             builder.module_operate_receiver,
@@ -87,7 +71,6 @@ impl NihilityCore {
                 Some(instruct_encoder),
                 Some(instruct_matcher),
                 Some(submodule_store),
-                Some(manipulate_sender),
                 Some(instruct_receiver),
                 Some(manipulate_receiver),
                 Some(module_operate_receiver),
@@ -101,88 +84,56 @@ impl NihilityCore {
                     instruct_matcher: Arc::new(instruct_matcher),
                     submodule_store: Arc::new(submodule_store),
                 };
-                core.run_heartbeat_manager_fn(heartbeat_manager_fn, manipulate_sender)?;
+                core.run_heartbeat_manager_fn(heartbeat_manager_fn)?;
                 core.run_instruct_manager_fn(instruct_manager_fn, instruct_receiver)?;
                 core.run_manipulate_manager_fn(manipulate_manager_fn, manipulate_receiver)?;
                 core.run_submodule_manager_fn(submodule_manager_fn, module_operate_receiver)?;
-                CORE.get_or_init(|| {core});
+                CORE.get_or_init(|| core);
                 Ok(())
             }
-            (None, _, _, _, _, _, _, _, _, _, _) => {
-                return Err(anyhow!("Builder Have instruct_encoder Field Value Is None"))
+            (None, _, _, _, _, _, _, _, _, _) => {
+                Err(anyhow!("Builder Have instruct_encoder Field Value Is None"))
             }
-            (_, None, _, _, _, _, _, _, _, _, _) => {
-                return Err(anyhow!("Builder Have instruct_matcher Field Value Is None"))
+            (_, None, _, _, _, _, _, _, _, _) => {
+                Err(anyhow!("Builder Have instruct_matcher Field Value Is None"))
             }
-            (_, _, None, _, _, _, _, _, _, _, _) => {
-                return Err(anyhow!("Builder Have submodule_store Field Value Is None"))
+            (_, _, None, _, _, _, _, _, _, _) => {
+                Err(anyhow!("Builder Have submodule_store Field Value Is None"))
             }
-            (_, _, _, None, _, _, _, _, _, _, _) => {
-                return Err(anyhow!(
-                    "Builder Have manipulate_sender Field Value Is None"
-                ))
-            }
-            (_, _, _, _, None, _, _, _, _, _, _) => {
-                return Err(anyhow!(
-                    "Builder Have instruct_receiver Field Value Is None"
-                ))
-            }
-            (_, _, _, _, _, None, _, _, _, _, _) => {
-                return Err(anyhow!(
-                    "Builder Have manipulate_receiver Field Value Is None"
-                ))
-            }
-            (_, _, _, _, _, _, None, _, _, _, _) => {
-                return Err(anyhow!(
-                    "Builder Have module_operate_receiver Field Value Is None"
-                ))
-            }
-            (_, _, _, _, _, _, _, None, _, _, _) => {
-                return Err(anyhow!(
-                    "Builder Have heartbeat_manager_fn Field Value Is None"
-                ))
-            }
-            (_, _, _, _, _, _, _, _, None, _, _) => {
-                return Err(anyhow!(
-                    "Builder Have instruct_manager_fn Field Value Is None"
-                ))
-            }
-            (_, _, _, _, _, _, _, _, _, None, _) => {
-                return Err(anyhow!(
-                    "Builder Have manipulate_manager_fn Field Value Is None"
-                ))
-            }
-            (_, _, _, _, _, _, _, _, _, _, None) => {
-                return Err(anyhow!(
-                    "Builder Have submodule_manager_fn Field Value Is None"
-                ))
-            }
+            (_, _, _, None, _, _, _, _, _, _) => Err(anyhow!(
+                "Builder Have instruct_receiver Field Value Is None"
+            )),
+            (_, _, _, _, None, _, _, _, _, _) => Err(anyhow!(
+                "Builder Have manipulate_receiver Field Value Is None"
+            )),
+            (_, _, _, _, _, None, _, _, _, _) => Err(anyhow!(
+                "Builder Have module_operate_receiver Field Value Is None"
+            )),
+            (_, _, _, _, _, _, None, _, _, _) => Err(anyhow!(
+                "Builder Have heartbeat_manager_fn Field Value Is None"
+            )),
+            (_, _, _, _, _, _, _, None, _, _) => Err(anyhow!(
+                "Builder Have instruct_manager_fn Field Value Is None"
+            )),
+            (_, _, _, _, _, _, _, _, None, _) => Err(anyhow!(
+                "Builder Have manipulate_manager_fn Field Value Is None"
+            )),
+            (_, _, _, _, _, _, _, _, _, None) => Err(anyhow!(
+                "Builder Have submodule_manager_fn Field Value Is None"
+            )),
         }
     }
 
     fn run_heartbeat_manager_fn(
         &self,
-        heartbeat_manager_fn: Box<
-            dyn Fn(
-                Arc<Box<dyn SubmoduleStore + Send + Sync>>,
-                WeakUnboundedSender<ModuleOperate>,
-            ) -> Result<()>,
-        >,
-        sender: WeakUnboundedSender<ModuleOperate>,
+        heartbeat_manager_fn: Box<HeartbeatManagerFn>,
     ) -> Result<()> {
-        heartbeat_manager_fn(self.submodule_store.clone(), sender)
+        heartbeat_manager_fn(self.submodule_store.clone())
     }
 
     fn run_instruct_manager_fn(
         &self,
-        instruct_manager_fn: Box<
-            dyn Fn(
-                Arc<Box<dyn InstructEncoder + Send + Sync>>,
-                Arc<Box<dyn InstructMatcher + Send + Sync>>,
-                Arc<Box<dyn SubmoduleStore + Send + Sync>>,
-                UnboundedReceiver<InstructEntity>,
-            ) -> Result<()>,
-        >,
+        instruct_manager_fn: Box<InstructManagerFn>,
         receiver: UnboundedReceiver<InstructEntity>,
     ) -> Result<()> {
         instruct_manager_fn(
@@ -195,12 +146,7 @@ impl NihilityCore {
 
     fn run_manipulate_manager_fn(
         &self,
-        manipulate_manager_fn: Box<
-            dyn Fn(
-                Arc<Box<dyn SubmoduleStore + Send + Sync>>,
-                UnboundedReceiver<ManipulateEntity>,
-            ) -> Result<()>,
-        >,
+        manipulate_manager_fn: Box<ManipulateManagerFn>,
         receiver: UnboundedReceiver<ManipulateEntity>,
     ) -> Result<()> {
         manipulate_manager_fn(self.submodule_store.clone(), receiver)
@@ -208,14 +154,7 @@ impl NihilityCore {
 
     fn run_submodule_manager_fn(
         &self,
-        submodule_manager_fn: Box<
-            dyn Fn(
-                Arc<Box<dyn InstructEncoder + Send + Sync>>,
-                Arc<Box<dyn InstructMatcher + Send + Sync>>,
-                Arc<Box<dyn SubmoduleStore + Send + Sync>>,
-                UnboundedReceiver<ModuleOperate>,
-            ) -> Result<()>,
-        >,
+        submodule_manager_fn: Box<SubmoduleManagerFn>,
         receiver: UnboundedReceiver<ModuleOperate>,
     ) -> Result<()> {
         submodule_manager_fn(
@@ -224,24 +163,6 @@ impl NihilityCore {
             self.submodule_store.clone(),
             receiver,
         )
-    }
-}
-
-impl Default for NihilityCoreBuilder {
-    fn default() -> Self {
-        NihilityCoreBuilder {
-            instruct_encoder: None,
-            instruct_matcher: None,
-            submodule_store: None,
-            manipulate_sender: None,
-            instruct_receiver: None,
-            manipulate_receiver: None,
-            module_operate_receiver: None,
-            heartbeat_manager_fn: None,
-            instruct_manager_fn: None,
-            manipulate_manager_fn: None,
-            submodule_manager_fn: None,
-        }
     }
 }
 
@@ -264,10 +185,6 @@ impl NihilityCoreBuilder {
         self.submodule_store = Some(submodule_store)
     }
 
-    pub fn set_manipulate_sender(&mut self, manipulate_sender: WeakUnboundedSender<ModuleOperate>) {
-        self.manipulate_sender = Some(manipulate_sender)
-    }
-
     pub fn set_instruct_receiver(&mut self, instruct_receiver: UnboundedReceiver<InstructEntity>) {
         self.instruct_receiver = Some(instruct_receiver)
     }
@@ -288,10 +205,7 @@ impl NihilityCoreBuilder {
 
     pub fn set_heartbeat_manager_fn(
         &mut self,
-        heartbeat_manager_fn: impl Fn(
-                Arc<Box<dyn SubmoduleStore + Send + Sync>>,
-                WeakUnboundedSender<ModuleOperate>,
-            ) -> Result<()>
+        heartbeat_manager_fn: impl Fn(Arc<Box<dyn SubmoduleStore + Send + Sync>>) -> Result<()>
             + 'static,
     ) {
         self.heartbeat_manager_fn = Some(Box::new(heartbeat_manager_fn))

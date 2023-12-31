@@ -21,12 +21,12 @@ impl Submodule {
     pub async fn create(module_operate: &ModuleOperate) -> Result<Self> {
         if let OperateType::Register = &module_operate.operate_type {
             if let Some(info) = &module_operate.info {
-                match info.connection_type {
+                match &info.conn_params.connection_type {
                     ConnectionType::GrpcType => {
                         let grpc_client_config =
-                            GrpcClientConfig::try_from(info.conn_params.clone())?;
+                            GrpcClientConfig::try_from(info.conn_params.conn_params.clone())?;
                         let mut client = GrpcClient::init(grpc_client_config);
-                        let client_type = match info.client_type {
+                        let client_type = match &info.conn_params.client_type {
                             ClientType::BothType => {
                                 client.connection_instruct_server().await?;
                                 client.connection_manipulate_server().await?;
@@ -39,6 +39,9 @@ impl Submodule {
                             ClientType::ManipulateType => {
                                 client.connection_manipulate_server().await?;
                                 ClientType::ManipulateType
+                            }
+                            ClientType::NotReceiveType => {
+                                ClientType::NotReceiveType
                             }
                         };
                         let mut default_instruct_map = HashMap::<String, String>::new();

@@ -6,7 +6,7 @@ use anyhow::Result;
 use lazy_static::lazy_static;
 use nihility_common::{InstructEntity, ManipulateEntity, ModuleOperate};
 use tokio::sync::mpsc;
-use tokio::sync::mpsc::WeakSender;
+use tokio::sync::mpsc::{WeakSender, WeakUnboundedSender};
 use tokio::{select, signal};
 use tokio_util::sync::CancellationToken;
 use tracing::info;
@@ -34,6 +34,9 @@ lazy_static! {
     static ref CANCELLATION_TOKEN: CancellationToken = CancellationToken::new();
 }
 static CLOSE_SENDER: OnceLock<WeakSender<String>> = OnceLock::new();
+static MODULE_OPERATE_SENDER: OnceLock<WeakUnboundedSender<ModuleOperate>> = OnceLock::new();
+static INSTRUCT_SENDER: OnceLock<WeakUnboundedSender<InstructEntity>> = OnceLock::new();
+static MANIPULATE_SENDER: OnceLock<WeakUnboundedSender<ManipulateEntity>> = OnceLock::new();
 
 pub struct NihilityTerminal;
 
@@ -49,14 +52,11 @@ impl NihilityTerminal {
         let (manipulate_se, manipulate_re) = mpsc::unbounded_channel::<ManipulateEntity>();
 
         CLOSE_SENDER.get_or_init(|| shutdown_se.downgrade());
+        MODULE_OPERATE_SENDER.get_or_init(|| module_operate_se.downgrade());
+        INSTRUCT_SENDER.get_or_init(|| instruct_se.downgrade());
+        MANIPULATE_SENDER.get_or_init(|| manipulate_se.downgrade());
 
-        server::server_start(
-            summary_config.communicat.clone(),
-            instruct_se.clone(),
-            manipulate_se.clone(),
-            module_operate_se.clone(),
-        )
-        .await?;
+        server::server_start(summary_config.communicat.clone(), ).await?;
 
         let instruct_encoder = SentenceTransformers::init(
             summary_config.core.encoder.model_path.to_string(),
@@ -70,7 +70,6 @@ impl NihilityTerminal {
         core_builder.set_instruct_encoder(Box::new(instruct_encoder));
         core_builder.set_instruct_matcher(Box::new(instruct_matcher));
         core_builder.set_submodule_store(Box::new(submodule_store));
-        core_builder.set_manipulate_sender(module_operate_se.downgrade());
         core_builder.set_instruct_receiver(instruct_re);
         core_builder.set_manipulate_receiver(manipulate_re);
         core_builder.set_module_operate_receiver(module_operate_re);
