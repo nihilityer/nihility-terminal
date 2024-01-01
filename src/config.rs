@@ -28,11 +28,20 @@ pub struct SummaryConfig {
 #[derive(Deserialize, Serialize, Debug)]
 pub struct LogConfig {
     pub enable: bool,
+    pub out_type: LogOutType,
+    pub out_path: String,
     pub level: String,
     pub with_file: bool,
     pub with_line_number: bool,
     pub with_thread_ids: bool,
     pub with_target: bool,
+}
+
+#[derive(Deserialize, Serialize, Default, Debug, Clone)]
+pub enum LogOutType {
+    #[default]
+    Console,
+    File,
 }
 
 #[derive(Deserialize, Serialize, Default, Debug, Clone)]
@@ -51,43 +60,43 @@ pub struct CoreConfig {
     pub submodule_store: SubmoduleStoreConfig,
 }
 
-#[derive(Deserialize, Serialize, PartialEq, Default, Debug, Clone)]
+#[derive(Deserialize, Serialize, Default, Debug, Clone)]
 pub enum HeartbeatManagerType {
     #[default]
     Simple,
 }
 
-#[derive(Deserialize, Serialize, PartialEq, Default, Debug, Clone)]
+#[derive(Deserialize, Serialize, Default, Debug, Clone)]
 pub enum InstructManagerType {
     #[default]
     Simple,
 }
 
-#[derive(Deserialize, Serialize, PartialEq, Default, Debug, Clone)]
+#[derive(Deserialize, Serialize, Default, Debug, Clone)]
 pub enum ManipulateManagerType {
     #[default]
     Simple,
 }
 
-#[derive(Deserialize, Serialize, PartialEq, Default, Debug, Clone)]
+#[derive(Deserialize, Serialize, Default, Debug, Clone)]
 pub enum SubmoduleManagerType {
     #[default]
     Simple,
 }
 
-#[derive(Deserialize, Serialize, PartialEq, Default, Debug, Clone)]
+#[derive(Deserialize, Serialize, Default, Debug, Clone)]
 pub enum InstructEncoderType {
     #[default]
     SentenceTransformers,
 }
 
-#[derive(Deserialize, Serialize, PartialEq, Default, Debug, Clone)]
+#[derive(Deserialize, Serialize, Default, Debug, Clone)]
 pub enum InstructMatcherType {
     #[default]
     GrpcQdrant,
 }
 
-#[derive(Deserialize, Serialize, PartialEq, Default, Debug, Clone)]
+#[derive(Deserialize, Serialize, Default, Debug, Clone)]
 pub enum SubmoduleStoreType {
     #[default]
     SimpleHashMap,
@@ -115,6 +124,8 @@ impl Default for LogConfig {
     fn default() -> Self {
         LogConfig {
             enable: true,
+            out_type: LogOutType::default(),
+            out_path: "log".to_string(),
             level: "INFO".to_string(),
             with_file: false,
             with_line_number: false,
