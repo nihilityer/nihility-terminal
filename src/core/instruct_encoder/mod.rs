@@ -1,11 +1,12 @@
 use anyhow::Result;
+use crate::config::InstructEncoderConfig;
 
 pub mod sentence_transformers;
 
 /// 所有指令编码模块全部实现此特征
 pub trait InstructEncoder {
     /// 初始化编码模块
-    fn init(model_path: String, model_name: String) -> Result<Self>
+    fn init(instruct_encoder_config: &InstructEncoderConfig) -> Result<Self>
     where
         Self: Sized + Send + Sync;
 

@@ -11,7 +11,10 @@ use tokio::{select, signal};
 use tokio_util::sync::CancellationToken;
 use tracing::info;
 
-use crate::config::SummaryConfig;
+use crate::config::{
+    HeartbeatManagerType, InstructEncoderType, InstructManagerType, InstructMatcherType,
+    ManipulateManagerType, SubmoduleManagerType, SubmoduleStoreType, SummaryConfig,
+};
 use crate::core::core_thread::heartbeat_manager::simple_heartbeat_manager_thread;
 use crate::core::core_thread::instruct_manager::simple_instruct_manager_thread;
 use crate::core::core_thread::manipulate_manager::simple_manipulate_manager_thread;
@@ -56,27 +59,61 @@ impl NihilityTerminal {
         INSTRUCT_SENDER.get_or_init(|| instruct_se.downgrade());
         MANIPULATE_SENDER.get_or_init(|| manipulate_se.downgrade());
 
-        server::server_start(summary_config.communicat.clone(), ).await?;
-
-        let instruct_encoder = SentenceTransformers::init(
-            summary_config.core.encoder.model_path.to_string(),
-            summary_config.core.encoder.model_name.to_string(),
-        )?;
-        let instruct_matcher =
-            GrpcQdrant::init(summary_config.core.module_manager.config_map.clone()).await?;
-        let submodule_store = HashMapSubmoduleStore::init().await?;
+        server::server_start(&summary_config.server).await?;
 
         let mut core_builder = NihilityCoreBuilder::default();
-        core_builder.set_instruct_encoder(Box::new(instruct_encoder));
-        core_builder.set_instruct_matcher(Box::new(instruct_matcher));
-        core_builder.set_submodule_store(Box::new(submodule_store));
+
         core_builder.set_instruct_receiver(instruct_re);
         core_builder.set_manipulate_receiver(manipulate_re);
         core_builder.set_module_operate_receiver(module_operate_re);
-        core_builder.set_heartbeat_manager_fn(simple_heartbeat_manager_thread);
-        core_builder.set_instruct_manager_fn(simple_instruct_manager_thread);
-        core_builder.set_manipulate_manager_fn(simple_manipulate_manager_thread);
-        core_builder.set_submodule_manager_fn(simple_submodule_manager_thread);
+
+        match &summary_config.core.instruct_encoder.instruct_encoder_type {
+            InstructEncoderType::SentenceTransformers => {
+                core_builder.set_instruct_encoder(Box::new(SentenceTransformers::init(
+                    &summary_config.core.instruct_encoder,
+                )?));
+            }
+        }
+
+        match &summary_config.core.instruct_matcher.instruct_matcher_type {
+            InstructMatcherType::GrpcQdrant => {
+                core_builder.set_instruct_matcher(Box::new(
+                    GrpcQdrant::init(&summary_config.core.instruct_matcher).await?,
+                ));
+            }
+        }
+
+        match &summary_config.core.submodule_store.submodule_store_type {
+            SubmoduleStoreType::SimpleHashMap => {
+                core_builder.set_submodule_store(Box::new(
+                    HashMapSubmoduleStore::init(&summary_config.core.submodule_store).await?,
+                ));
+            }
+        }
+
+        match &summary_config.core.heartbeat_manager {
+            HeartbeatManagerType::Simple => {
+                core_builder.set_heartbeat_manager_fn(simple_heartbeat_manager_thread);
+            }
+        }
+
+        match &summary_config.core.instruct_manager {
+            InstructManagerType::Simple => {
+                core_builder.set_instruct_manager_fn(simple_instruct_manager_thread);
+            }
+        }
+
+        match &summary_config.core.manipulate_manager {
+            ManipulateManagerType::Simple => {
+                core_builder.set_manipulate_manager_fn(simple_manipulate_manager_thread);
+            }
+        }
+
+        match &summary_config.core.submodule_manager {
+            SubmoduleManagerType::Simple => {
+                core_builder.set_submodule_manager_fn(simple_submodule_manager_thread);
+            }
+        }
 
         NihilityCore::build(core_builder)?;
 

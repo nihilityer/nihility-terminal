@@ -1,7 +1,7 @@
-use std::collections::HashMap;
-
 use anyhow::Result;
 use async_trait::async_trait;
+
+use crate::config::InstructMatcherConfig;
 
 pub mod grpc_qdrant;
 
@@ -17,7 +17,7 @@ pub struct PointPayload {
 #[async_trait]
 pub trait InstructMatcher {
     /// 初始化指令管理组件
-    async fn init(config: HashMap<String, String>) -> Result<Self>
+    async fn init(instruct_matcher_config: &InstructMatcherConfig) -> Result<Self>
     where
         Self: Sized + Send + Sync;
 

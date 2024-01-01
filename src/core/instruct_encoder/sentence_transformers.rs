@@ -6,9 +6,12 @@ use ort::{inputs, CPUExecutionProvider, GraphOptimizationLevel, Session};
 use tokenizers::Tokenizer;
 use tracing::debug;
 
+use crate::config::InstructEncoderConfig;
 use crate::core::instruct_encoder::InstructEncoder;
 
-const ENCODE_SIZE: u64 = 512;
+pub const ENCODE_SIZE: u64 = 512;
+pub const MODULE_PATH: &str = "module_path";
+pub const MODULE_NAME: &str = "model_name";
 
 pub struct SentenceTransformers {
     pub ort_session: Session,
@@ -16,10 +19,24 @@ pub struct SentenceTransformers {
 }
 
 impl InstructEncoder for SentenceTransformers {
-    fn init(model_path: String, model_name: String) -> Result<Self>
+    fn init(instruct_encoder_config: &InstructEncoderConfig) -> Result<Self>
     where
         Self: Sized + Send + Sync,
     {
+        if !instruct_encoder_config.config_map.contains_key(MODULE_PATH) {
+            return Err(anyhow!(
+                "SentenceTransformers Config Field {:?} Missing",
+                MODULE_PATH
+            ));
+        }
+        if !instruct_encoder_config.config_map.contains_key(MODULE_NAME) {
+            return Err(anyhow!(
+                "SentenceTransformers Config Field {:?} Missing",
+                MODULE_NAME
+            ));
+        }
+        let model_path = instruct_encoder_config.config_map.get(MODULE_PATH).unwrap();
+        let model_name = instruct_encoder_config.config_map.get(MODULE_NAME).unwrap();
         let onnx_model_path = format!("{}/{}/model.onnx", model_path, model_name);
         let tokenizers_config_path = format!("{}/{}/tokenizer.json", model_path, model_name);
         debug!("Use onnx_model_path: {}", &onnx_model_path);

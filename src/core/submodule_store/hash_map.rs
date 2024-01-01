@@ -5,6 +5,7 @@ use anyhow::anyhow;
 use anyhow::Result;
 use async_trait::async_trait;
 
+use crate::config::SubmoduleStoreConfig;
 use crate::core::submodule_store::SubmoduleStore;
 use crate::entity::submodule::Submodule;
 
@@ -15,7 +16,7 @@ pub struct HashMapSubmoduleStore {
 
 #[async_trait]
 impl SubmoduleStore for HashMapSubmoduleStore {
-    async fn init() -> Result<Self>
+    async fn init(_submodule_store_config: &SubmoduleStoreConfig) -> Result<Self>
     where
         Self: Sized + Send + Sync,
     {

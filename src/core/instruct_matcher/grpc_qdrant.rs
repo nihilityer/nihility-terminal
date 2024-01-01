@@ -19,6 +19,7 @@ use qdrant_client::qdrant::{
 };
 use tracing::{debug, info};
 
+use crate::config::InstructMatcherConfig;
 use crate::core::instruct_matcher::{InstructMatcher, PointPayload};
 
 pub const QDRANT_GRPC_ADDR_FIELD: &str = "qdrant_grpc_addr";
@@ -35,25 +36,42 @@ pub struct GrpcQdrant {
 
 #[async_trait]
 impl InstructMatcher for GrpcQdrant {
-    async fn init(config: HashMap<String, String>) -> Result<Self>
+    async fn init(instruct_matcher_config: &InstructMatcherConfig) -> Result<Self>
     where
         Self: Sized + Send + Sync,
     {
-        if config.get(ENCODE_SIZE_FIELD).is_none() {
+        if instruct_matcher_config
+            .config_map
+            .get(ENCODE_SIZE_FIELD)
+            .is_none()
+        {
             return Err(anyhow!(
                 "Required configuration {:?} is missing",
                 ENCODE_SIZE_FIELD
             ));
         }
-        if config.get(QDRANT_GRPC_ADDR_FIELD).is_none() {
+        if instruct_matcher_config
+            .config_map
+            .get(QDRANT_GRPC_ADDR_FIELD)
+            .is_none()
+        {
             return Err(anyhow!(
                 "Required configuration {:?} is missing",
                 QDRANT_GRPC_ADDR_FIELD
             ));
         }
-        let qdrant_client =
-            QdrantClientConfig::from_url(config.get(QDRANT_GRPC_ADDR_FIELD).unwrap()).build()?;
-        let encode_size = config.get(ENCODE_SIZE_FIELD).unwrap().parse::<u64>()?;
+        let qdrant_client = QdrantClientConfig::from_url(
+            instruct_matcher_config
+                .config_map
+                .get(QDRANT_GRPC_ADDR_FIELD)
+                .unwrap(),
+        )
+        .build()?;
+        let encode_size = instruct_matcher_config
+            .config_map
+            .get(ENCODE_SIZE_FIELD)
+            .unwrap()
+            .parse::<u64>()?;
 
         let mut collection_created = false;
         let collections = qdrant_client.list_collections().await?;

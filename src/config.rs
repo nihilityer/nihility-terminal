@@ -6,24 +6,26 @@ use std::path::Path;
 use anyhow::Result;
 use figment::providers::{Format, Json, Serialized, Toml, Yaml};
 use figment::Figment;
+use nihility_common::GrpcServerConfig;
 use serde::{Deserialize, Serialize};
-use crate::core::instruct_matcher::ENCODE_SIZE_FIELD;
+
+use crate::core::instruct_encoder::sentence_transformers;
+use crate::core::instruct_encoder::sentence_transformers::{MODULE_NAME, MODULE_PATH};
 use crate::core::instruct_matcher::grpc_qdrant::QDRANT_GRPC_ADDR_FIELD;
+use crate::core::instruct_matcher::ENCODE_SIZE_FIELD;
 
 const JSON_CONFIG_FILE_NAME: &str = "config.json";
 const TOML_CONFIG_FILE_NAME: &str = "config.toml";
 const YAML_CONFIG_FILE_NAME: &str = "config.yaml";
 
-/// 总配置
-#[derive(Deserialize, Serialize)]
+#[derive(Deserialize, Serialize, Default, Debug)]
 pub struct SummaryConfig {
     pub log: LogConfig,
-    pub communicat: CommunicatConfig,
+    pub server: ServerConfig,
     pub core: CoreConfig,
 }
 
-/// 日志相关配置
-#[derive(Deserialize, Serialize)]
+#[derive(Deserialize, Serialize, Debug)]
 pub struct LogConfig {
     pub enable: bool,
     pub level: String,
@@ -33,222 +35,143 @@ pub struct LogConfig {
     pub with_target: bool,
 }
 
-/// 交流组件总配置
-#[derive(Deserialize, Serialize, Clone)]
-pub struct CommunicatConfig {
-    #[cfg(unix)]
-    pub pipe: PipeConfig,
-    #[cfg(windows)]
-    pub windows_named_pipes: WindowsNamedPipesConfig,
-    pub multicast: MulticastConfig,
+#[derive(Deserialize, Serialize, Default, Debug, Clone)]
+pub struct ServerConfig {
+    pub grpc_server: GrpcServerConfig,
 }
 
-/// 核心组件总配置
-#[derive(Deserialize, Serialize, Clone)]
+#[derive(Deserialize, Serialize, Default, Debug, Clone)]
 pub struct CoreConfig {
-    pub module_manager: InstructManagerConfig,
-    pub encoder: EncoderConfig,
-    pub default_use_submodule: String,
+    pub heartbeat_manager: HeartbeatManagerType,
+    pub instruct_manager: InstructManagerType,
+    pub manipulate_manager: ManipulateManagerType,
+    pub submodule_manager: SubmoduleManagerType,
+    pub instruct_matcher: InstructMatcherConfig,
+    pub instruct_encoder: InstructEncoderConfig,
+    pub submodule_store: SubmoduleStoreConfig,
 }
 
-/// unix管道通信相关配置
-///
-/// 注: 仅在unix系统上支持
-#[derive(Deserialize, Serialize, Clone)]
-#[cfg(unix)]
-pub struct PipeConfig {
-    pub enable: bool,
-    pub directory: String,
-    pub module: String,
-    pub instruct_receiver: String,
-    pub manipulate_receiver: String,
+#[derive(Deserialize, Serialize, PartialEq, Default, Debug, Clone)]
+pub enum HeartbeatManagerType {
+    #[default]
+    Simple,
 }
 
-/// windows管道通信相关配置
-#[derive(Deserialize, Serialize, Clone)]
-#[cfg(windows)]
-pub struct WindowsNamedPipesConfig {
-    pub enable: bool,
-    pub pipe_prefix: String,
-    pub register_pipe_name: String,
-    pub offline_pipe_name: String,
-    pub heartbeat_pipe_name: String,
-    pub update_pipe_name: String,
-    pub instruct_pipe_name: String,
-    pub manipulate_pipe_name: String,
-}
-
-/// 组播相关配置
-#[derive(Deserialize, Serialize, Clone)]
-pub struct MulticastConfig {
-    pub enable: bool,
-    pub bind_addr: String,
-    pub bind_port: u32,
-    pub multicast_group: String,
-    pub multicast_port: u32,
-    pub multicast_info: String,
-    pub interval: u32,
-}
-
-/// 指令管理组件类型枚举
-#[derive(Deserialize, Serialize, Debug, Clone)]
+#[derive(Deserialize, Serialize, PartialEq, Default, Debug, Clone)]
 pub enum InstructManagerType {
+    #[default]
+    Simple,
+}
+
+#[derive(Deserialize, Serialize, PartialEq, Default, Debug, Clone)]
+pub enum ManipulateManagerType {
+    #[default]
+    Simple,
+}
+
+#[derive(Deserialize, Serialize, PartialEq, Default, Debug, Clone)]
+pub enum SubmoduleManagerType {
+    #[default]
+    Simple,
+}
+
+#[derive(Deserialize, Serialize, PartialEq, Default, Debug, Clone)]
+pub enum InstructEncoderType {
+    #[default]
+    SentenceTransformers,
+}
+
+#[derive(Deserialize, Serialize, PartialEq, Default, Debug, Clone)]
+pub enum InstructMatcherType {
+    #[default]
     GrpcQdrant,
 }
 
-/// 指令管理组件配置
-#[derive(Deserialize, Serialize, Clone)]
-pub struct InstructManagerConfig {
-    pub manager_type: InstructManagerType,
+#[derive(Deserialize, Serialize, PartialEq, Default, Debug, Clone)]
+pub enum SubmoduleStoreType {
+    #[default]
+    SimpleHashMap,
+}
+
+#[derive(Deserialize, Serialize, Debug, Clone)]
+pub struct InstructEncoderConfig {
+    pub instruct_encoder_type: InstructEncoderType,
     pub config_map: HashMap<String, String>,
 }
 
-/// 指令编码模块配置
-#[derive(Deserialize, Serialize, Clone)]
-pub struct EncoderConfig {
-    pub model_path: String,
-    pub model_name: String,
+#[derive(Deserialize, Serialize, Debug, Clone)]
+pub struct InstructMatcherConfig {
+    pub instruct_matcher_type: InstructMatcherType,
+    pub config_map: HashMap<String, String>,
 }
 
-impl SummaryConfig {
-    fn default() -> Result<Self> {
-        let log_config = LogConfig {
+#[derive(Deserialize, Serialize, Default, Debug, Clone)]
+pub struct SubmoduleStoreConfig {
+    pub submodule_store_type: SubmoduleStoreType,
+    pub config_map: HashMap<String, String>,
+}
+
+impl Default for LogConfig {
+    fn default() -> Self {
+        LogConfig {
             enable: true,
             level: "INFO".to_string(),
             with_file: false,
             with_line_number: false,
             with_thread_ids: false,
             with_target: false,
-        };
+        }
+    }
+}
 
-        #[cfg(unix)]
-        let work_dir = std::fs::canonicalize("../")?
-            .to_str()
-            .ok_or(AppError::ConfigError("create workdir config".to_string()))?
-            .to_string();
-        #[cfg(unix)]
-        let work_dir = format!("{}/communication", work_dir);
-        #[cfg(unix)]
-        let pipe_config = PipeConfig {
-            enable: true,
-            directory: work_dir,
-            module: "model".to_string(),
-            instruct_receiver: "instruct_receiver".to_string(),
-            manipulate_receiver: "manipulate_receiver".to_string(),
-        };
+impl Default for InstructEncoderConfig {
+    fn default() -> Self {
+        let mut config_map = HashMap::<String, String>::new();
+        config_map.insert(MODULE_PATH.to_string(), String::from("model"));
+        config_map.insert(MODULE_NAME.to_string(), String::from("onnx_bge_small_zh"));
+        InstructEncoderConfig {
+            instruct_encoder_type: InstructEncoderType::default(),
+            config_map,
+        }
+    }
+}
 
-        #[cfg(windows)]
-        let windows_named_pipes_config = WindowsNamedPipesConfig {
-            enable: true,
-            pipe_prefix: r"\\.\pipe\nihilityer".to_string(),
-            register_pipe_name: "register".to_string(),
-            offline_pipe_name: "offline".to_string(),
-            heartbeat_pipe_name: "heartbeat".to_string(),
-            update_pipe_name: "update".to_string(),
-            instruct_pipe_name: "master_instruct".to_string(),
-            manipulate_pipe_name: "manipulate".to_string(),
-        };
-
-        let multicast_config = MulticastConfig {
-            enable: false,
-            bind_addr: "0.0.0.0".to_string(),
-            bind_port: 0,
-            multicast_group: "224.0.0.123".to_string(),
-            multicast_port: 1234,
-            multicast_info: format!("{}:{}", "127.0.0.1", 60),
-            interval: 5,
-        };
-
+impl Default for InstructMatcherConfig {
+    fn default() -> Self {
         let mut config_map = HashMap::<String, String>::new();
         config_map.insert(
             QDRANT_GRPC_ADDR_FIELD.to_string(),
             "http://192.168.0.100:6334".to_string(),
         );
-        config_map.insert(ENCODE_SIZE_FIELD.to_string(), "512".to_string());
-        let module_manager_config = InstructManagerConfig {
-            manager_type: InstructManagerType::GrpcQdrant,
+        config_map.insert(
+            ENCODE_SIZE_FIELD.to_string(),
+            sentence_transformers::ENCODE_SIZE.to_string(),
+        );
+        InstructMatcherConfig {
+            instruct_matcher_type: InstructMatcherType::default(),
             config_map,
-        };
-
-        let encoder_config = EncoderConfig {
-            model_path: "model".to_string(),
-            model_name: "onnx_bge_small_zh".to_string(),
-        };
-
-        let core_config = CoreConfig {
-            module_manager: module_manager_config,
-            encoder: encoder_config,
-            default_use_submodule: "test".to_string(),
-        };
-
-        #[cfg(windows)]
-        let communicat_config = CommunicatConfig {
-            windows_named_pipes: windows_named_pipes_config,
-            multicast: multicast_config,
-        };
-
-        #[cfg(unix)]
-        let communicat_config = CommunicatConfig {
-            grpc: grpc_config,
-            pipe: pipe_config,
-            multicast: multicast_config,
-        };
-
-        Ok(SummaryConfig {
-            log: log_config,
-            core: core_config,
-            communicat: communicat_config,
-        })
+        }
     }
+}
 
-    /// 当配置文件不存在时使用默认配置当配置文件不存在时使用默认配置
+impl SummaryConfig {
     pub fn init() -> Result<Self> {
-        let mut config = SummaryConfig::default()?;
-
+        let config = SummaryConfig::default();
         if Path::try_exists(TOML_CONFIG_FILE_NAME.as_ref())? {
-            let SummaryConfig {
-                log,
-                communicat,
-                core,
-            }: SummaryConfig = Figment::merge(
+            Ok(Figment::merge(
                 Figment::from(Serialized::defaults(config)),
                 Toml::file(TOML_CONFIG_FILE_NAME),
             )
-            .extract()?;
-            Ok(SummaryConfig {
-                log,
-                communicat,
-                core,
-            })
+            .extract()?)
         } else if Path::try_exists(YAML_CONFIG_FILE_NAME.as_ref())? {
-            let SummaryConfig {
-                log,
-                communicat,
-                core,
-            }: SummaryConfig = Figment::from(Serialized::defaults(config))
+            Ok(Figment::from(Serialized::defaults(config))
                 .merge(Yaml::file(YAML_CONFIG_FILE_NAME))
-                .extract()?;
-            Ok(SummaryConfig {
-                log,
-                communicat,
-                core,
-            })
+                .extract()?)
         } else if Path::try_exists(JSON_CONFIG_FILE_NAME.as_ref())? {
-            let SummaryConfig {
-                log,
-                communicat,
-                core,
-            }: SummaryConfig = Figment::from(Serialized::defaults(config))
+            Ok(Figment::from(Serialized::defaults(config))
                 .merge(Json::file(JSON_CONFIG_FILE_NAME))
-                .extract()?;
-            Ok(SummaryConfig {
-                log,
-                communicat,
-                core,
-            })
+                .extract()?)
         } else {
-            config.communicat.multicast.enable = false;
-
             let mut config_file: File = File::create(TOML_CONFIG_FILE_NAME)?;
             config_file.write_all(toml::to_string_pretty(&config)?.as_bytes())?;
             config_file.flush()?;
