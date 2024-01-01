@@ -18,8 +18,8 @@ use qdrant_client::qdrant::{
     VectorsConfig, WithPayloadSelector,
 };
 use tracing::{debug, info};
-use crate::core::instruct_matcher::{InstructMatcher, PointPayload};
 
+use crate::core::instruct_matcher::{InstructMatcher, PointPayload};
 
 pub const QDRANT_GRPC_ADDR_FIELD: &str = "qdrant_grpc_addr";
 const ENCODE_SIZE_FIELD: &str = "encode_size";
@@ -147,7 +147,7 @@ impl InstructMatcher for GrpcQdrant {
             ));
         }
         self.qdrant_client
-            .upsert_points_batch_blocking(COLLECTION_NAME, point_structs, None, CHUNK_SIZE)
+            .upsert_points_batch_blocking(COLLECTION_NAME, None, point_structs, None, CHUNK_SIZE)
             .await?;
         Ok(())
     }
@@ -162,6 +162,7 @@ impl InstructMatcher for GrpcQdrant {
         self.qdrant_client
             .delete_points(
                 COLLECTION_NAME,
+                None,
                 &PointsSelector {
                     points_selector_one_of: Some(PointsSelectorOneOf::Points(PointsIdsList {
                         ids: point_ids,

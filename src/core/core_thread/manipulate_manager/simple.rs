@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use anyhow::Result;
-use nihility_common::{ManipulateEntity, ManipulateType, ResponseCode};
+use nihility_common::{ManipulateData, ManipulateEntity, ManipulateType, ResponseCode};
 use tokio::spawn;
 use tokio::sync::mpsc::UnboundedReceiver;
 use tokio::sync::Mutex;
@@ -51,15 +51,45 @@ async fn start(
             .get(&manipulate.info.use_module_name)
             .await?
         {
-            match module.client.text_display_manipulate(manipulate).await {
-                Ok(ResponseCode::Success) => {
-                    debug!("Send Manipulate Success");
+            match &manipulate.manipulate {
+                ManipulateData::Text(_) => {
+                    match module.client.text_display_manipulate(manipulate).await {
+                        Ok(ResponseCode::Success) => {
+                            debug!("Send Text Display Manipulate Success");
+                        }
+                        Ok(other_resp_code) => {
+                            error!("Send Text Display Manipulate Fail, Resp Code: {:?}", other_resp_code);
+                        }
+                        Err(e) => {
+                            error!("Send Text Display Manipulate Error: {}", e);
+                        }
+                    }
                 }
-                Ok(other_resp_code) => {
-                    error!("Send Manipulate Fail, Resp Code: {:?}", other_resp_code);
+                ManipulateData::Simple => {
+                    match module.client.simple_manipulate(manipulate).await {
+                        Ok(ResponseCode::Success) => {
+                            debug!("Send Simple Manipulate Success");
+                        }
+                        Ok(other_resp_code) => {
+                            error!("Send Simple Manipulate Fail, Resp Code: {:?}", other_resp_code);
+                        }
+                        Err(e) => {
+                            error!("Send Simple Manipulate Error: {}", e);
+                        }
+                    }
                 }
-                Err(e) => {
-                    error!("Send Manipulate Error: {}", e);
+                ManipulateData::ConnectionParams(_) => {
+                    match module.client.direct_connection_manipulate(manipulate).await {
+                        Ok(ResponseCode::Success) => {
+                            debug!("Send Simple Manipulate Success");
+                        }
+                        Ok(other_resp_code) => {
+                            error!("Send Simple Manipulate Fail, Resp Code: {:?}", other_resp_code);
+                        }
+                        Err(e) => {
+                            error!("Send Simple Manipulate Error: {}", e);
+                        }
+                    }
                 }
             }
         } else {
