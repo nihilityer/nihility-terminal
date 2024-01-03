@@ -18,9 +18,9 @@ const JSON_CONFIG_FILE_NAME: &str = "config.json";
 const TOML_CONFIG_FILE_NAME: &str = "config.toml";
 const YAML_CONFIG_FILE_NAME: &str = "config.yaml";
 
-#[derive(Deserialize, Serialize, Default, Debug)]
+#[derive(Deserialize, Serialize, Debug)]
 pub struct SummaryConfig {
-    pub log: LogConfig,
+    pub log: Vec<LogConfig>,
     pub server: ServerConfig,
     pub core: CoreConfig,
 }
@@ -29,7 +29,6 @@ pub struct SummaryConfig {
 pub struct LogConfig {
     pub enable: bool,
     pub out_type: LogOutType,
-    pub out_path: String,
     pub level: String,
     pub with_file: bool,
     pub with_line_number: bool,
@@ -41,7 +40,7 @@ pub struct LogConfig {
 pub enum LogOutType {
     #[default]
     Console,
-    File,
+    File(String),
 }
 
 #[derive(Deserialize, Serialize, Default, Debug, Clone)]
@@ -120,12 +119,21 @@ pub struct SubmoduleStoreConfig {
     pub config_map: HashMap<String, String>,
 }
 
+impl Default for SummaryConfig {
+    fn default() -> Self {
+        SummaryConfig {
+            log: vec![LogConfig::default()],
+            server: ServerConfig::default(),
+            core: CoreConfig::default(),
+        }
+    }
+}
+
 impl Default for LogConfig {
     fn default() -> Self {
         LogConfig {
             enable: true,
             out_type: LogOutType::default(),
-            out_path: "log".to_string(),
             level: "INFO".to_string(),
             with_file: false,
             with_line_number: false,
@@ -183,8 +191,8 @@ impl SummaryConfig {
                 .merge(Json::file(JSON_CONFIG_FILE_NAME))
                 .extract()?)
         } else {
-            let mut config_file: File = File::create(TOML_CONFIG_FILE_NAME)?;
-            config_file.write_all(toml::to_string_pretty(&config)?.as_bytes())?;
+            let mut config_file: File = File::create(JSON_CONFIG_FILE_NAME)?;
+            config_file.write_all(serde_json::to_string_pretty(&config)?.as_bytes())?;
             config_file.flush()?;
             Ok(config)
         }
