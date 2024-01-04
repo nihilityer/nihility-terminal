@@ -49,6 +49,7 @@ impl Log {
                 ),
             );
             let layer = fmt::layer()
+                .with_ansi(false)
                 .with_file(config.with_file)
                 .with_line_number(config.with_line_number)
                 .with_thread_ids(config.with_thread_ids)

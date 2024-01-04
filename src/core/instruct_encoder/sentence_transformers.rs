@@ -23,25 +23,19 @@ impl InstructEncoder for SentenceTransformers {
     where
         Self: Sized + Send + Sync,
     {
-        if !instruct_encoder_config.config_map.contains_key(MODULE_PATH) {
-            return Err(anyhow!(
-                "SentenceTransformers Config Field {:?} Missing",
-                MODULE_PATH
-            ));
-        }
-        if !instruct_encoder_config.config_map.contains_key(MODULE_NAME) {
-            return Err(anyhow!(
-                "SentenceTransformers Config Field {:?} Missing",
-                MODULE_NAME
-            ));
-        }
-        let model_path = instruct_encoder_config.config_map.get(MODULE_PATH).unwrap();
-        let model_name = instruct_encoder_config.config_map.get(MODULE_NAME).unwrap();
+        let model_path = instruct_encoder_config
+            .config_map
+            .get(MODULE_PATH)
+            .expect("SentenceTransformers Config Field 'MODULE_PATH' Missing");
+        let model_name = instruct_encoder_config
+            .config_map
+            .get(MODULE_NAME)
+            .expect("SentenceTransformers Config Field 'MODULE_NAME' Missing");
         let onnx_model_path = format!("{}/{}/model.onnx", model_path, model_name);
         let tokenizers_config_path = format!("{}/{}/tokenizer.json", model_path, model_name);
         debug!("Use onnx_model_path: {}", &onnx_model_path);
         debug!("Use tokenizers_config_path: {}", &tokenizers_config_path);
-        ort::init()
+        ort::init_from(instruct_encoder_config.ort_lib_path.to_string())
             .with_execution_providers([CPUExecutionProvider::default().build()])
             .commit()?;
         let session = Session::builder()?
@@ -57,8 +51,8 @@ impl InstructEncoder for SentenceTransformers {
         Ok(encoder)
     }
 
-    fn encode(&self, input: &String) -> Result<Vec<f32>> {
-        let encoding = self.tokenizer.encode(input.to_string(), false).unwrap();
+    fn encode(&self, input: &str) -> Result<Vec<f32>> {
+        let encoding = self.tokenizer.encode(input, false).unwrap();
         debug!("Encoding: {:?}", &encoding);
 
         let input_ids = Array1::from_iter(

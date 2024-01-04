@@ -10,3 +10,4 @@ config.yaml
 /model/*
 *.zip
 log
+lib

@@ -13,7 +13,6 @@ tokio-util = "0.7"
 prost = "0.12"
 time = { version = "0.3", features = ["macros"] }
 tonic = "0.10"
-regex = "1.9"
 anyhow = "1.0"
 async-trait = "0.1"
 serde = { version = "1.0", features = ["derive"] }
@@ -30,4 +29,4 @@ lazy_static = "1.4"
 
 [profile.release]
 lto = true
-opt-level = 'z'
+opt-level = 's'

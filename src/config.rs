@@ -104,6 +104,7 @@ pub enum SubmoduleStoreType {
 #[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct InstructEncoderConfig {
     pub instruct_encoder_type: InstructEncoderType,
+    pub ort_lib_path: String,
     pub config_map: HashMap<String, String>,
 }
 
@@ -148,8 +149,15 @@ impl Default for InstructEncoderConfig {
         let mut config_map = HashMap::<String, String>::new();
         config_map.insert(MODULE_PATH.to_string(), String::from("model"));
         config_map.insert(MODULE_NAME.to_string(), String::from("onnx_bge_small_zh"));
+        #[cfg(target_os = "windows")]
+        let ort_lib_path = String::from("lib/onnxruntime.dll");
+        #[cfg(any(target_os = "linux", target_os = "android"))]
+        let ort_lib_path = String::from("lib/libonnxruntime.so");
+        #[cfg(target_os = "macos")]
+        let ort_lib_path = String::from("lib/libonnxruntime.dylib");
         InstructEncoderConfig {
             instruct_encoder_type: InstructEncoderType::default(),
+            ort_lib_path,
             config_map,
         }
     }
