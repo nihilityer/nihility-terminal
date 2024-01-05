@@ -30,3 +30,7 @@ lazy_static = "1.4"
 [profile.release]
 lto = true
 opt-level = 's'
+panic = "unwind"
+
+[profile.dev]
+panic = "unwind"

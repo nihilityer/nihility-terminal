@@ -1,4 +1,5 @@
 use std::ops::Deref;
+use std::panic::catch_unwind;
 
 use anyhow::{anyhow, Result};
 use ndarray::{Array1, Axis};
@@ -35,9 +36,13 @@ impl InstructEncoder for SentenceTransformers {
         let tokenizers_config_path = format!("{}/{}/tokenizer.json", model_path, model_name);
         debug!("Use onnx_model_path: {}", &onnx_model_path);
         debug!("Use tokenizers_config_path: {}", &tokenizers_config_path);
-        ort::init_from(instruct_encoder_config.ort_lib_path.to_string())
-            .with_execution_providers([CPUExecutionProvider::default().build()])
-            .commit()?;
+        if let Err(e) = catch_unwind(|| {
+            ort::init_from(instruct_encoder_config.ort_lib_path.to_string())
+                .with_execution_providers([CPUExecutionProvider::default().build()])
+                .commit()
+        }) {
+            return Err(anyhow!("Ort Init Error, Please Check The Config!"));
+        }
         let session = Session::builder()?
             .with_optimization_level(GraphOptimizationLevel::Level1)?
             .with_model_from_file(onnx_model_path)?;

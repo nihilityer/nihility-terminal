@@ -1,9 +1,7 @@
-use anyhow::Result;
-
 use nihility_terminal::NihilityTerminal;
 
 #[tokio::main]
-pub async fn main() -> Result<()> {
+pub async fn main() {
     println!(
         r#"      ___                       ___                       ___                   ___           ___           ___           ___
      /\__\          ___        /\__\          ___        /\__\      ___        /\  \         |\__\         /\  \         /\  \
@@ -17,6 +15,10 @@ pub async fn main() -> Result<()> {
      /:/  /      \/__/         /:/  /      \/__/        \:\__\   \/__/                                    \:\__\        |:|  |
      \/__/                     \/__/                     \/__/                                             \/__/         \|__|    "#
     );
-    NihilityTerminal::start().await?;
-    Ok(())
+    if let Err(e) = NihilityTerminal::start().await {
+        println!("{}", e);
+    }
+    println!("press any key to exit");
+    let mut input = String::new();
+    let _ = std::io::stdin().read_line(&mut input);
 }
