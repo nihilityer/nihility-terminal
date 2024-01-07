@@ -18,6 +18,13 @@ const JSON_CONFIG_FILE_NAME: &str = "config.json";
 const TOML_CONFIG_FILE_NAME: &str = "config.toml";
 const YAML_CONFIG_FILE_NAME: &str = "config.yaml";
 
+#[cfg(target_os = "windows")]
+pub const ORT_LIB_PATH: &str = "lib/onnxruntime.dll";
+#[cfg(any(target_os = "linux", target_os = "android"))]
+pub const ORT_LIB_PATH: &str = "lib/libonnxruntime.so";
+#[cfg(target_os = "macos")]
+pub const ORT_LIB_PATH: &str = "lib/libonnxruntime.dylib";
+
 #[derive(Deserialize, Serialize, Debug)]
 pub struct SummaryConfig {
     pub log: Vec<LogConfig>,
@@ -149,15 +156,9 @@ impl Default for InstructEncoderConfig {
         let mut config_map = HashMap::<String, String>::new();
         config_map.insert(MODULE_PATH.to_string(), String::from("model"));
         config_map.insert(MODULE_NAME.to_string(), String::from("onnx_bge_small_zh"));
-        #[cfg(target_os = "windows")]
-        let ort_lib_path = String::from("lib/onnxruntime.dll");
-        #[cfg(any(target_os = "linux", target_os = "android"))]
-        let ort_lib_path = String::from("lib/libonnxruntime.so");
-        #[cfg(target_os = "macos")]
-        let ort_lib_path = String::from("lib/libonnxruntime.dylib");
         InstructEncoderConfig {
             instruct_encoder_type: InstructEncoderType::default(),
-            ort_lib_path,
+            ort_lib_path: ORT_LIB_PATH.to_string(),
             config_map,
         }
     }

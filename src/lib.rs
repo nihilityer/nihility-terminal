@@ -10,6 +10,7 @@ use tokio::sync::mpsc::{WeakSender, WeakUnboundedSender};
 use tokio::{select, signal};
 use tokio_util::sync::CancellationToken;
 use tracing::info;
+use crate::check::check;
 
 use crate::config::{
     HeartbeatManagerType, InstructEncoderType, InstructManagerType, InstructMatcherType,
@@ -32,6 +33,7 @@ mod core;
 mod entity;
 mod log;
 mod server;
+pub mod check;
 
 lazy_static! {
     static ref CANCELLATION_TOKEN: CancellationToken = CancellationToken::new();
@@ -48,6 +50,8 @@ impl NihilityTerminal {
         let summary_config: SummaryConfig = SummaryConfig::init()?;
 
         Log::init(&summary_config.log)?;
+
+        check()?;
 
         let (shutdown_se, mut shutdown_re) = mpsc::channel::<String>(4);
         let (module_operate_se, module_operate_re) = mpsc::unbounded_channel::<ModuleOperate>();

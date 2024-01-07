@@ -16,7 +16,7 @@ pub async fn main() {
      \/__/                     \/__/                     \/__/                                             \/__/         \|__|    "#
     );
     if let Err(e) = NihilityTerminal::start().await {
-        println!("{}", e);
+        println!("{:?}", e);
     }
     println!("press any key to exit");
     let mut input = String::new();
