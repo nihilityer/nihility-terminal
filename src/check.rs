@@ -21,11 +21,10 @@ pub fn check() -> Result<()> {
 }
 
 fn download_ort_lib() -> Result<()> {
-    fetch_file(ORT_LIB_DOWNLOAD_URL, ORT_LIB_ZIP_FILE_HASH)?;
-    Ok(())
+    extract_lib(&download_file(ORT_LIB_DOWNLOAD_URL, ORT_LIB_ZIP_FILE_HASH)?[..])
 }
 
-fn fetch_file(source_url: &str, source_sha512: &str) -> Result<()> {
+fn download_file(source_url: &str, source_sha512: &str) -> Result<Vec<u8>> {
     let resp = ureq::get(source_url)
         .timeout(std::time::Duration::from_secs(1800))
         .call()?;
@@ -46,11 +45,19 @@ fn fetch_file(source_url: &str, source_sha512: &str) -> Result<()> {
     let s = hex::encode(result);
     debug!("Download file sha512: {:?}", &s);
     assert_eq!(s, source_sha512);
+    Ok(buffer)
+}
+
+fn extract_lib(buffer: &[u8]) -> Result<()> {
     let lib_path = Path::new(ORT_LIB_PATH);
     let lib_dir = lib_path.parent().expect("ORT_LIB_PATH Error");
     create_dir_all(lib_dir)?;
     let zip_file_path = lib_dir.join(ORT_LIB_DOWNLOAD_FILE_NAME);
-    let mut zip_file = File::options().write(true).read(true).create_new(true).open(zip_file_path)?;
+    let mut zip_file = File::options()
+        .write(true)
+        .read(true)
+        .create_new(true)
+        .open(zip_file_path)?;
     zip_file.write_all(&buffer[..])?;
     let mut zip = zip::ZipArchive::new(zip_file)?;
     let mut buffer = Vec::<u8>::new();
@@ -58,6 +65,10 @@ fn fetch_file(source_url: &str, source_sha512: &str) -> Result<()> {
         debug!("Zip File Inner File Name: {}", file_name);
     }
     zip.by_name(ORT_LIB_NAME_IN_ZIP)?.read_to_end(&mut buffer)?;
-    File::options().write(true).create_new(true).open(ORT_LIB_PATH)?.write_all(&buffer[..])?;
+    File::options()
+        .write(true)
+        .create_new(true)
+        .open(ORT_LIB_PATH)?
+        .write_all(&buffer[..])?;
     Ok(())
 }
