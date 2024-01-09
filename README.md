@@ -1,34 +1,27 @@
 # nihility-terminal
 
-理想中是制作一个可以随意添加/卸载模块的助手系统。
+理想中是制作一个可以随意添加/卸载模块的助手系统，只要下载一个可执行文件即可完成所有默认配置初始化，交互更加便捷，如果可以做到想啥就做啥就是心中完美的助手系统。
 
-## 功能列表：
+任务列表：
 
-- [x] 命令分类（核心）
-- [x] 子模块热加载/卸载
-- [ ] 多种模块间通讯方式
-- [ ] 多种子模块管理方式
-- [ ] 跨平台GUI、web管理（跨平台GUI用于交互）
+- [x] 子模块注册
+- [x] 子模块更新
+- [x] 子模块离线
+- [x] 子模块心跳管理
+- [x] 文本指令转发
+- [x] 文本展示操作转发
+- [x] 简单操作转发
+- [x] 直连操作转发
+- [x] 管理线程、指令编码、指令匹配、子模块管理可配置
+- [x] 配置文件
+- [x] 控制台日志与文件日志
+- [x] 自动下载缺失onnxruntime库文件
+- [ ] 通讯加密
+- [ ] 自动下载默认指令编码模型
+- [ ] 自动下载指令匹配组件
 
-## 对接注意事项
+待优化任务：
 
-### Grpc子模块
-
-子模块连接参数
-
-- `grpc_addr`: 核心模块连接子模块的地址，示例: `http://127.0.0.1:1234`
-
-### WindowsNamedPipe子模块
-
-子模块连接参数
-
-- `instruct_windows_named_pipe`: 核心模块向子模块发送指令的地址，示例: `\\.\pipe\nihilityer\submodule_name\instruct`
-- `manipulate_windows_named_pipe`: 核心模块向子模块发送操作的地址，示例: `\\.\pipe\nihilityer\submodule_name\manipulate`
-
-## 开发中笔记
-
-`ort`需要需要设置`ORT_DYLIB_PATH`为`onnruntime`的lib文件路径：
-
-```
-ORT_DYLIB_PATH=D:\software\onnxruntime-win-x64-1.16.0\lib\onnxruntime.dll
-```
+- 指令转发
+- 操作转发
+- 指令匹配集成（不依赖外部组件）
