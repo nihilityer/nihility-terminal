@@ -8,12 +8,17 @@ use tracing::debug;
 
 use crate::config::ORT_LIB_PATH;
 
+const SENTENCE_TRANSFORMERS_TOKENIZER_URL: &str = "https://www.modelscope.cn/api/v1/models/Xorbits/bge-small-zh/repo?Revision=master&FilePath=tokenizer.json";
+const SENTENCE_TRANSFORMERS_MODEL_URL: &str = "https://www.modelscope.cn/api/v1/models/Xorbits/bge-small-zh/repo?Revision=master&FilePath=pytorch_model.bin";
+
 #[cfg(all(target_os = "windows", target_arch = "x86_64"))]
 const ORT_LIB_DOWNLOAD_FILE_NAME: &str = "onnxruntime-win-x64-1.16.3.zip";
 #[cfg(all(target_os = "windows", target_arch = "x86_64"))]
 const ORT_LIB_NAME_IN_ZIP: &str = "onnxruntime-win-x64-1.16.3/lib/onnxruntime.dll";
 #[cfg(all(target_os = "windows", target_arch = "x86_64"))]
 const ORT_LIB_DOWNLOAD_URL: &str = "https://github.com/microsoft/onnxruntime/releases/download/v1.16.3/onnxruntime-win-x64-1.16.3.zip";
+#[cfg(all(target_os = "windows", target_arch = "x86_64"))]
+const ORT_LIB_ZIP_FILE_SIZE: usize = 55808388;
 #[cfg(all(target_os = "windows", target_arch = "x86_64"))]
 const ORT_LIB_ZIP_FILE_HASH: &str = "855cc3f9f354c2acd472a066118a86b84c7b8940f098acef2d2d239af0a3c69fb32026d4ba4b86c46848a849f963691f94751df9004efa817fdcea48ec9cb4e6";
 #[cfg(all(target_os = "windows", target_arch = "x86"))]
@@ -22,6 +27,8 @@ const ORT_LIB_DOWNLOAD_FILE_NAME: &str = "onnxruntime-win-x86-1.16.3.zip";
 const ORT_LIB_NAME_IN_ZIP: &str = "onnxruntime-win-x86-1.16.3/lib/onnxruntime.dll";
 #[cfg(all(target_os = "windows", target_arch = "x86"))]
 const ORT_LIB_DOWNLOAD_URL: &str = "https://github.com/microsoft/onnxruntime/releases/download/v1.16.3/onnxruntime-win-x86-1.16.3.zip";
+#[cfg(all(target_os = "windows", target_arch = "x86"))]
+const ORT_LIB_ZIP_FILE_SIZE: usize = 54872219;
 #[cfg(all(target_os = "windows", target_arch = "x86"))]
 const ORT_LIB_ZIP_FILE_HASH: &str = "66335c3c16ef90a0ecf4e8f6dc314903e91e790b829c17de913415579a123f7b15af86935ef8bfc4314a7e3057fe07d1443ef1dceec157384b34fd3b0e94986c";
 
@@ -33,10 +40,16 @@ pub fn check() -> Result<()> {
 }
 
 fn download_ort_lib() -> Result<()> {
-    extract_lib(&download_file(ORT_LIB_DOWNLOAD_URL, ORT_LIB_ZIP_FILE_HASH)?[..])
+    extract_lib(
+        &download_file(
+            ORT_LIB_DOWNLOAD_URL,
+            ORT_LIB_ZIP_FILE_SIZE,
+            ORT_LIB_ZIP_FILE_HASH,
+        )?[..],
+    )
 }
 
-fn download_file(source_url: &str, source_sha512: &str) -> Result<Vec<u8>> {
+fn download_file(source_url: &str, source_size: usize, source_sha512: &str) -> Result<Vec<u8>> {
     let resp = ureq::get(source_url)
         .timeout(std::time::Duration::from_secs(1800))
         .call()?;
@@ -48,14 +61,15 @@ fn download_file(source_url: &str, source_sha512: &str) -> Result<Vec<u8>> {
     let mut reader = resp.into_reader();
     let mut buffer = Vec::new();
     reader.read_to_end(&mut buffer)?;
-    debug!("Download file len: {:?}", &len);
+    debug!("Download File Size: {:?}", &len);
     assert_eq!(buffer.len(), len);
+    assert_eq!(buffer.len(), source_size);
 
     let mut hasher = Sha512::new();
     hasher.update(&buffer);
     let result = hasher.finalize();
     let s = hex::encode(result);
-    debug!("Download file sha512: {:?}", &s);
+    debug!("Download File Sha512: {:?}", &s);
     assert_eq!(s, source_sha512);
     Ok(buffer)
 }
