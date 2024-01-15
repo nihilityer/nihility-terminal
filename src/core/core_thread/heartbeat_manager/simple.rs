@@ -49,11 +49,9 @@ async fn start(submodule_store: Arc<Mutex<Box<dyn SubmoduleStore + Send + Sync>>
             .await?
         {
             info!("Submodule {:?} Heartbeat Exception", &name);
-            let operate = ModuleOperate {
-                name,
-                info: None,
-                operate_type: OperateType::Offline,
-            };
+            let mut operate = ModuleOperate::default();
+            operate.name = name;
+            operate.operate_type = OperateType::Offline;
             MODULE_OPERATE_SENDER
                 .get()
                 .unwrap()

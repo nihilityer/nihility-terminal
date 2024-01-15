@@ -4,7 +4,7 @@ use std::sync::OnceLock;
 
 use anyhow::Result;
 use lazy_static::lazy_static;
-use nihility_common::{InstructEntity, ManipulateEntity, ModuleOperate};
+use nihility_common::{core_authentication_core_init, InstructEntity, ManipulateEntity, ModuleOperate};
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::{WeakSender, WeakUnboundedSender};
 use tokio::{select, signal};
@@ -50,6 +50,7 @@ impl NihilityTerminal {
         let summary_config: SummaryConfig = SummaryConfig::init()?;
 
         Log::init(&summary_config.log)?;
+        core_authentication_core_init(&summary_config.core.auth_key_dir)?;
 
         check()?;
 

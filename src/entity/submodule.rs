@@ -23,7 +23,7 @@ impl Submodule {
                 match &info.conn_params.connection_type {
                     ConnectionType::GrpcType => {
                         let grpc_client_config =
-                            GrpcClientConfig::try_from(info.conn_params.conn_params.clone())?;
+                            GrpcClientConfig::try_from(info.conn_params.conn_config.clone())?;
                         let mut client = GrpcClient::init(grpc_client_config);
                         let client_type = match &info.conn_params.client_type {
                             ClientType::BothType => {

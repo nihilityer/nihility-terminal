@@ -64,6 +64,7 @@ pub struct CoreConfig {
     pub instruct_matcher: InstructMatcherConfig,
     pub instruct_encoder: InstructEncoderConfig,
     pub submodule_store: SubmoduleStoreConfig,
+    pub auth_key_dir: String,
 }
 
 #[derive(Deserialize, Serialize, Default, Debug, Clone)]

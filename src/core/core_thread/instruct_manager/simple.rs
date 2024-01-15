@@ -60,15 +60,13 @@ async fn start(
             Ok(module_name) => {
                 if let Some(module) = submodule_store.lock().await.get(&module_name).await? {
                     match module.client.text_instruct(instruct).await {
-                        Ok(ResponseCode::Success) => {
-                            debug!("Forward Instruct Success");
-                        }
-                        Ok(other_resp_code) => {
-                            error!("Forward Instruct Fail, Resp Code: {:?}", other_resp_code);
-                        }
-                        Err(e) => {
-                            error!("Forward Instruct Error: {}", e);
-                        }
+                        Ok(resp) => match resp.code() {
+                            ResponseCode::Success => debug!("Forward Instruct Success"),
+                            other_resp_code => {
+                                error!("Forward Instruct Fail, Resp Code: {:?}", other_resp_code)
+                            }
+                        },
+                        Err(e) => error!("Forward Instruct Error: {}", e),
                     }
                     continue;
                 }

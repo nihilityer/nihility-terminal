@@ -8,8 +8,8 @@ use tracing::debug;
 
 use crate::config::ORT_LIB_PATH;
 
-const SENTENCE_TRANSFORMERS_TOKENIZER_URL: &str = "https://www.modelscope.cn/api/v1/models/Xorbits/bge-small-zh/repo?Revision=master&FilePath=tokenizer.json";
-const SENTENCE_TRANSFORMERS_MODEL_URL: &str = "https://www.modelscope.cn/api/v1/models/Xorbits/bge-small-zh/repo?Revision=master&FilePath=pytorch_model.bin";
+const _SENTENCE_TRANSFORMERS_TOKENIZER_URL: &str = "https://www.modelscope.cn/api/v1/models/Xorbits/bge-small-zh/repo?Revision=master&FilePath=tokenizer.json";
+const _SENTENCE_TRANSFORMERS_MODEL_URL: &str = "https://www.modelscope.cn/api/v1/models/Xorbits/bge-small-zh/repo?Revision=master&FilePath=pytorch_model.bin";
 
 #[cfg(all(target_os = "windows", target_arch = "x86_64"))]
 const ORT_LIB_DOWNLOAD_FILE_NAME: &str = "onnxruntime-win-x64-1.16.3.zip";

@@ -11,3 +11,6 @@ config.yaml
 *.zip
 log
 lib
+auth
+id_rsa.pub
+id_rsa

@@ -54,41 +54,38 @@ async fn start(
             match &manipulate.manipulate {
                 ManipulateData::Text(_) => {
                     match module.client.text_display_manipulate(manipulate).await {
-                        Ok(ResponseCode::Success) => {
-                            debug!("Send Text Display Manipulate Success");
-                        }
-                        Ok(other_resp_code) => {
-                            error!("Send Text Display Manipulate Fail, Resp Code: {:?}", other_resp_code);
-                        }
-                        Err(e) => {
-                            error!("Send Text Display Manipulate Error: {}", e);
-                        }
+                        Ok(resp) => match resp.code() {
+                            ResponseCode::Success => debug!("Send Text Display Manipulate Success"),
+                            other_resp_code => error!(
+                                "Send Text Display Manipulate Fail, Resp Code: {:?}",
+                                other_resp_code
+                            ),
+                        },
+                        Err(e) => error!("Send Text Display Manipulate Error: {}", e),
                     }
                 }
-                ManipulateData::Simple => {
-                    match module.client.simple_manipulate(manipulate).await {
-                        Ok(ResponseCode::Success) => {
-                            debug!("Send Simple Manipulate Success");
-                        }
-                        Ok(other_resp_code) => {
-                            error!("Send Simple Manipulate Fail, Resp Code: {:?}", other_resp_code);
-                        }
-                        Err(e) => {
-                            error!("Send Simple Manipulate Error: {}", e);
-                        }
-                    }
-                }
+                ManipulateData::Simple => match module.client.simple_manipulate(manipulate).await {
+                    Ok(resp) => match resp.code() {
+                        ResponseCode::Success => debug!("Send Simple Manipulate Success"),
+                        other_resp_code => error!(
+                            "Send Simple Manipulate Fail, Resp Code: {:?}",
+                            other_resp_code
+                        ),
+                    },
+                    Err(e) => error!("Send Simple Manipulate Error: {}", e),
+                },
                 ManipulateData::ConnectionParams(_) => {
                     match module.client.direct_connection_manipulate(manipulate).await {
-                        Ok(ResponseCode::Success) => {
-                            debug!("Send Simple Manipulate Success");
-                        }
-                        Ok(other_resp_code) => {
-                            error!("Send Simple Manipulate Fail, Resp Code: {:?}", other_resp_code);
-                        }
-                        Err(e) => {
-                            error!("Send Simple Manipulate Error: {}", e);
-                        }
+                        Ok(resp) => match resp.code() {
+                            ResponseCode::Success => {
+                                debug!("Send Direct Connection Manipulate Success")
+                            }
+                            other_resp_code => error!(
+                                "Send Direct Connection Manipulate Fail, Resp Code: {:?}",
+                                other_resp_code
+                            ),
+                        },
+                        Err(e) => error!("Send Direct Connection Manipulate Error: {}", e),
                     }
                 }
             }

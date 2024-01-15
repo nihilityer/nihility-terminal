@@ -43,11 +43,6 @@ pub fn simple_submodule_manager_thread(
     Ok(())
 }
 
-/// 负责管理子模块
-///
-/// 1、定时获取子模块心跳，当离线时将对应子模块从模组中卸载
-///
-/// 2、特定错误进行重试或只通知
 async fn start(
     instruct_encoder: Arc<Box<dyn InstructEncoder + Send + Sync>>,
     instruct_matcher: Arc<Box<dyn InstructMatcher + Send + Sync>>,
@@ -113,7 +108,6 @@ async fn start(
     Ok(())
 }
 
-/// 更新子模块指令设置，如果要更新连接设置应该先离线然后注册，而不是发送更新操作
 async fn update_submodule(
     instruct_encoder: Arc<Box<dyn InstructEncoder + Send + Sync>>,
     instruct_matcher: Arc<Box<dyn InstructMatcher + Send + Sync>>,
@@ -187,7 +181,6 @@ async fn update_submodule(
     Ok(module_operate.name.to_string())
 }
 
-/// 更新子模块心跳时间
 async fn update_submodule_heartbeat(
     submodule_store: Arc<Mutex<Box<dyn SubmoduleStore + Send + Sync>>>,
     module_operate: ModuleOperate,
@@ -205,7 +198,6 @@ async fn update_submodule_heartbeat(
     Ok(())
 }
 
-/// 离线子模块处理
 async fn offline_submodule(
     instruct_matcher: Arc<Box<dyn InstructMatcher + Send + Sync>>,
     submodule_store: Arc<Mutex<Box<dyn SubmoduleStore + Send + Sync>>>,
@@ -229,7 +221,6 @@ async fn offline_submodule(
     Ok(module_operate.name.to_string())
 }
 
-/// 注册子模块处理
 async fn register_submodule(
     instruct_encoder: Arc<Box<dyn InstructEncoder + Send + Sync>>,
     instruct_matcher: Arc<Box<dyn InstructMatcher + Send + Sync>>,
