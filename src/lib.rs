@@ -4,14 +4,14 @@ use std::sync::OnceLock;
 
 use anyhow::Result;
 use lazy_static::lazy_static;
-use nihility_common::{core_authentication_core_init, InstructEntity, ManipulateEntity, ModuleOperate};
+use nihility_common::{
+    core_authentication_core_init, InstructEntity, ManipulateEntity, ModuleOperate,
+};
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::{WeakSender, WeakUnboundedSender};
-use tokio::{select, signal};
 use tokio_util::sync::CancellationToken;
-use tracing::info;
-use crate::check::check;
 
+use crate::check::check;
 use crate::config::{
     HeartbeatManagerType, InstructEncoderType, InstructManagerType, InstructMatcherType,
     ManipulateManagerType, SubmoduleManagerType, SubmoduleStoreType, SummaryConfig,
@@ -28,12 +28,12 @@ use crate::core::submodule_store::{HashMapSubmoduleStore, SubmoduleStore};
 use crate::core::{NihilityCore, NihilityCoreBuilder};
 use crate::log::Log;
 
+pub mod check;
 mod config;
 mod core;
 mod entity;
 mod log;
 mod server;
-pub mod check;
 
 lazy_static! {
     static ref CANCELLATION_TOKEN: CancellationToken = CancellationToken::new();
@@ -46,6 +46,14 @@ static MANIPULATE_SENDER: OnceLock<WeakUnboundedSender<ManipulateEntity>> = Once
 pub struct NihilityTerminal;
 
 impl NihilityTerminal {
+    pub fn set_close_sender(close_sender: WeakSender<String>) {
+        CLOSE_SENDER.get_or_init(|| close_sender);
+    }
+
+    pub fn get_cancellation_token() -> CancellationToken {
+        CANCELLATION_TOKEN.clone()
+    }
+
     pub async fn start() -> Result<()> {
         let summary_config: SummaryConfig = SummaryConfig::init()?;
 
@@ -54,12 +62,10 @@ impl NihilityTerminal {
 
         check()?;
 
-        let (shutdown_se, mut shutdown_re) = mpsc::channel::<String>(4);
         let (module_operate_se, module_operate_re) = mpsc::unbounded_channel::<ModuleOperate>();
         let (instruct_se, instruct_re) = mpsc::unbounded_channel::<InstructEntity>();
         let (manipulate_se, manipulate_re) = mpsc::unbounded_channel::<ManipulateEntity>();
 
-        CLOSE_SENDER.get_or_init(|| shutdown_se.downgrade());
         MODULE_OPERATE_SENDER.get_or_init(|| module_operate_se.downgrade());
         INSTRUCT_SENDER.get_or_init(|| instruct_se.downgrade());
         MANIPULATE_SENDER.get_or_init(|| manipulate_se.downgrade());
@@ -125,17 +131,7 @@ impl NihilityTerminal {
         drop(instruct_se);
         drop(manipulate_se);
         drop(module_operate_se);
-        drop(shutdown_se);
 
-        select! {
-            _ = signal::ctrl_c() => {
-                CANCELLATION_TOKEN.cancel();
-            },
-            _ = CANCELLATION_TOKEN.cancelled() => {}
-        }
-        while let Some(module_name) = shutdown_re.recv().await {
-            info!("{} Exit", module_name);
-        }
         Ok(())
     }
 }
