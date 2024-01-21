@@ -217,7 +217,13 @@ async fn offline_submodule(
             }
         }
     }
+    debug!("Offline Submodule Instruct Points Id: {:?}", &point_ids);
     instruct_matcher.remove_points(point_ids).await?;
+    submodule_store
+        .lock()
+        .await
+        .remove_submodule(&module_operate.name)
+        .await?;
     Ok(module_operate.name.to_string())
 }
 
@@ -230,12 +236,14 @@ async fn register_submodule(
     info!("start register model：{:?}", &module_operate.name);
     let register_submodule_name = module_operate.name.to_string();
     let mut submodule = Submodule::create(&module_operate).await?;
+    debug!("Create Submodule Success");
     let mut points = Vec::<PointPayload>::new();
-    if let Some(_) = submodule_store
+    if (submodule_store
         .lock()
         .await
         .get(&module_operate.name)
-        .await?
+        .await?)
+        .is_some()
     {
         return Err(anyhow!(
             "The Current Submodule {:?} Is Registered",

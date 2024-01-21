@@ -16,4 +16,5 @@ pub trait SubmoduleStore {
     async fn get_mut(&mut self, name: &String) -> Result<Option<&mut Submodule>>;
     async fn update_heartbeat(&mut self, name: &String) -> Result<()>;
     async fn get_expire_heartbeat_submodule(&self, expire_time: u64) -> Result<Vec<String>>;
+    async fn remove_submodule(&mut self, name: &String) -> Result<Submodule>;
 }

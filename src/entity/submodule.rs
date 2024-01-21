@@ -6,6 +6,7 @@ use nihility_common::{
     ClientType, ConnectionType, GrpcClient, GrpcClientConfig, ModuleOperate, NihilityClient,
     OperateType,
 };
+use tracing::debug;
 
 pub struct Submodule {
     pub name: String,
@@ -18,6 +19,7 @@ pub struct Submodule {
 
 impl Submodule {
     pub async fn create(module_operate: &ModuleOperate) -> Result<Self> {
+        debug!("Create Submodule Use Module Operate: {:?}", &module_operate);
         if let OperateType::Register = &module_operate.operate_type {
             if let Some(info) = &module_operate.info {
                 return match &info.conn_params.connection_type {

@@ -60,4 +60,11 @@ impl SubmoduleStore for HashMapSubmoduleStore {
         }
         Ok(result)
     }
+
+    async fn remove_submodule(&mut self, name: &String) -> Result<Submodule> {
+        match self.inner_data.remove(name) {
+            None => Err(anyhow!("Cannot Find Named {} Submodule", name)),
+            Some(submodule) => Ok(submodule)
+        }
+    }
 }

@@ -33,9 +33,6 @@ pub fn simple_heartbeat_manager_thread(
     Ok(())
 }
 
-/// 管理子模块的心跳，当有子模块心跳过期时
-///
-/// 通过`module_operate_sender`发送消息将对于子模块离线
 async fn start(submodule_store: Arc<Mutex<Box<dyn SubmoduleStore + Send + Sync>>>) -> Result<()> {
     info!("Heartbeat Manager Thread Start");
     let mut interval = tokio::time::interval(Duration::from_secs(HEARTBEAT_TIME));
