@@ -20,52 +20,63 @@ impl Submodule {
     pub async fn create(module_operate: &ModuleOperate) -> Result<Self> {
         if let OperateType::Register = &module_operate.operate_type {
             if let Some(info) = &module_operate.info {
-                match &info.conn_params.connection_type {
+                return match &info.conn_params.connection_type {
                     ConnectionType::GrpcType => {
-                        let grpc_client_config =
-                            GrpcClientConfig::try_from(info.conn_params.conn_config.clone())?;
-                        let mut client = GrpcClient::init(grpc_client_config);
-                        let client_type = match &info.conn_params.client_type {
+                        let (client, client_type) = match &info.conn_params.client_type {
                             ClientType::BothType => {
+                                let grpc_client_config = GrpcClientConfig::try_from(
+                                    info.conn_params.conn_config.clone(),
+                                )?;
+                                let mut client = GrpcClient::init(grpc_client_config);
                                 client.connection_instruct_server().await?;
                                 client.connection_manipulate_server().await?;
-                                ClientType::BothType
+                                (client, ClientType::BothType)
                             }
                             ClientType::InstructType => {
+                                let grpc_client_config = GrpcClientConfig::try_from(
+                                    info.conn_params.conn_config.clone(),
+                                )?;
+                                let mut client = GrpcClient::init(grpc_client_config);
                                 client.connection_instruct_server().await?;
-                                ClientType::InstructType
+                                (client, ClientType::InstructType)
                             }
                             ClientType::ManipulateType => {
+                                let grpc_client_config = GrpcClientConfig::try_from(
+                                    info.conn_params.conn_config.clone(),
+                                )?;
+                                let mut client = GrpcClient::init(grpc_client_config);
                                 client.connection_manipulate_server().await?;
-                                ClientType::ManipulateType
+                                (client, ClientType::ManipulateType)
                             }
-                            ClientType::NotReceiveType => ClientType::NotReceiveType,
+                            ClientType::NotReceiveType => {
+                                let mut client = GrpcClient::init(GrpcClientConfig::default());
+                                client.connection_manipulate_server().await?;
+                                (client, ClientType::ManipulateType)
+                            }
                         };
                         let mut default_instruct_map = HashMap::<String, String>::new();
                         for instruct in &info.default_instruct {
                             default_instruct_map.insert(instruct.to_string(), String::new());
                         }
-                        return Ok(Submodule {
+                        Ok(Submodule {
                             name: module_operate.name.to_string(),
                             default_instruct_map,
                             connection_type: ConnectionType::GrpcType,
                             client_type,
                             heartbeat_time: SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs(),
                             client: Box::new(client),
-                        });
+                        })
                     }
                     ConnectionType::PipeType => {
-                        return Err(anyhow!("ModuleOperate PipeType Not Support Yet"))
+                        Err(anyhow!("ModuleOperate PipeType Not Support Yet"))
                     }
-                    ConnectionType::WindowsNamedPipeType => {
-                        return Err(anyhow!(
-                            "ModuleOperate WindowsNamedPipeType Not Support Yet"
-                        ))
-                    }
+                    ConnectionType::WindowsNamedPipeType => Err(anyhow!(
+                        "ModuleOperate WindowsNamedPipeType Not Support Yet"
+                    )),
                     ConnectionType::HttpType => {
-                        return Err(anyhow!("ModuleOperate HttpType Not Support Yet"))
+                        Err(anyhow!("ModuleOperate HttpType Not Support Yet"))
                     }
-                }
+                };
             }
         }
         Err(anyhow!("ModuleOperate OperateType Error"))
