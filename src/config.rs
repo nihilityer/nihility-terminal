@@ -6,7 +6,7 @@ use std::path::Path;
 use anyhow::Result;
 use figment::providers::{Format, Json, Serialized, Toml, Yaml};
 use figment::Figment;
-use nihility_common::GrpcServerConfig;
+use nihility_common::{GrpcServerConfig, LogConfig};
 use serde::{Deserialize, Serialize};
 
 use crate::core::instruct_encoder::sentence_transformers;
@@ -26,28 +26,10 @@ pub const ORT_LIB_PATH: &str = "lib/libonnxruntime.so";
 pub const ORT_LIB_PATH: &str = "lib/libonnxruntime.dylib";
 
 #[derive(Deserialize, Serialize, Debug)]
-pub struct SummaryConfig {
+pub struct NihilityTerminalConfig {
     pub log: Vec<LogConfig>,
     pub server: ServerConfig,
     pub core: CoreConfig,
-}
-
-#[derive(Deserialize, Serialize, Debug)]
-pub struct LogConfig {
-    pub enable: bool,
-    pub out_type: LogOutType,
-    pub level: String,
-    pub with_file: bool,
-    pub with_line_number: bool,
-    pub with_thread_ids: bool,
-    pub with_target: bool,
-}
-
-#[derive(Deserialize, Serialize, Default, Debug, Clone)]
-pub enum LogOutType {
-    #[default]
-    Console,
-    File(String),
 }
 
 #[derive(Deserialize, Serialize, Default, Debug, Clone)]
@@ -128,26 +110,12 @@ pub struct SubmoduleStoreConfig {
     pub config_map: HashMap<String, String>,
 }
 
-impl Default for SummaryConfig {
+impl Default for NihilityTerminalConfig {
     fn default() -> Self {
-        SummaryConfig {
+        NihilityTerminalConfig {
             log: vec![LogConfig::default()],
             server: ServerConfig::default(),
             core: CoreConfig::default(),
-        }
-    }
-}
-
-impl Default for LogConfig {
-    fn default() -> Self {
-        LogConfig {
-            enable: true,
-            out_type: LogOutType::default(),
-            level: "INFO".to_string(),
-            with_file: false,
-            with_line_number: false,
-            with_thread_ids: false,
-            with_target: false,
         }
     }
 }
@@ -183,9 +151,9 @@ impl Default for InstructMatcherConfig {
     }
 }
 
-impl SummaryConfig {
+impl NihilityTerminalConfig {
     pub fn init() -> Result<Self> {
-        let config = SummaryConfig::default();
+        let config = NihilityTerminalConfig::default();
         if Path::try_exists(TOML_CONFIG_FILE_NAME.as_ref())? {
             Ok(Figment::merge(
                 Figment::from(Serialized::defaults(config)),

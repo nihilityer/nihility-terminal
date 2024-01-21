@@ -1,8 +1,9 @@
+use nihility_common::Log;
 use tokio::sync::mpsc;
 use tokio::{select, signal};
 use tracing::info;
 
-use nihility_terminal::NihilityTerminal;
+use nihility_terminal::{NihilityTerminal, NihilityTerminalConfig};
 
 #[tokio::main]
 pub async fn main() {
@@ -22,7 +23,9 @@ pub async fn main() {
     let (shutdown_se, mut shutdown_re) = mpsc::channel::<String>(4);
     let cancellation_token = NihilityTerminal::get_cancellation_token();
     NihilityTerminal::set_close_sender(shutdown_se.downgrade());
-    if let Err(e) = NihilityTerminal::start().await {
+    let summary_config = NihilityTerminalConfig::init().expect("Config Init Error");
+    Log::init(&summary_config.log).expect("Log Init Error");
+    if let Err(e) = NihilityTerminal::start(summary_config).await {
         println!("{:?}", e);
     }
     drop(shutdown_se);

@@ -12,9 +12,10 @@ use tokio::sync::mpsc::{WeakSender, WeakUnboundedSender};
 use tokio_util::sync::CancellationToken;
 
 use crate::check::check;
+pub use crate::config::NihilityTerminalConfig;
 use crate::config::{
     HeartbeatManagerType, InstructEncoderType, InstructManagerType, InstructMatcherType,
-    ManipulateManagerType, SubmoduleManagerType, SubmoduleStoreType, SummaryConfig,
+    ManipulateManagerType, SubmoduleManagerType, SubmoduleStoreType,
 };
 use crate::core::core_thread::heartbeat_manager::simple_heartbeat_manager_thread;
 use crate::core::core_thread::instruct_manager::simple_instruct_manager_thread;
@@ -26,13 +27,11 @@ use crate::core::instruct_matcher::grpc_qdrant::GrpcQdrant;
 use crate::core::instruct_matcher::InstructMatcher;
 use crate::core::submodule_store::{HashMapSubmoduleStore, SubmoduleStore};
 use crate::core::{NihilityCore, NihilityCoreBuilder};
-use crate::log::Log;
 
 pub mod check;
 mod config;
 mod core;
 mod entity;
-mod log;
 mod server;
 
 lazy_static! {
@@ -54,10 +53,7 @@ impl NihilityTerminal {
         CANCELLATION_TOKEN.clone()
     }
 
-    pub async fn start() -> Result<()> {
-        let summary_config: SummaryConfig = SummaryConfig::init()?;
-
-        Log::init(&summary_config.log)?;
+    pub async fn start(summary_config: NihilityTerminalConfig) -> Result<()> {
         core_authentication_core_init(&summary_config.core.auth_key_dir)?;
 
         check()?;
