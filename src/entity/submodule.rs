@@ -49,9 +49,7 @@ impl Submodule {
                                 (client, ClientType::ManipulateType)
                             }
                             ClientType::NotReceiveType => {
-                                let mut client = GrpcClient::init(GrpcClientConfig::default());
-                                client.connection_manipulate_server().await?;
-                                (client, ClientType::ManipulateType)
+                                (GrpcClient::init(GrpcClientConfig::default()), ClientType::ManipulateType)
                             }
                         };
                         let mut default_instruct_map = HashMap::<String, String>::new();
