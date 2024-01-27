@@ -1,25 +1,22 @@
 use std::collections::HashMap;
-use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use anyhow::{anyhow, Result};
-use nihility_common::{ModuleOperate, OperateType};
+use nihility_common::{remove_submodule_public_key, ModuleOperate, OperateType};
 use tokio::spawn;
 use tokio::sync::mpsc::UnboundedReceiver;
-use tokio::sync::Mutex;
 use tracing::{debug, error, info};
 use uuid::Uuid;
 
-use crate::core::instruct_encoder::InstructEncoder;
-use crate::core::instruct_matcher::{InstructMatcher, PointPayload};
-use crate::core::submodule_store::SubmoduleStore;
+use crate::core::instruct_matcher::PointPayload;
+use crate::core::{InstructEncoderImpl, InstructMatcherImpl, SubmoduleStoreImpl};
 use crate::entity::submodule::Submodule;
 use crate::{CANCELLATION_TOKEN, CLOSE_SENDER};
 
 pub fn simple_submodule_manager_thread(
-    instruct_encoder: Arc<Box<dyn InstructEncoder + Send + Sync>>,
-    instruct_matcher: Arc<Box<dyn InstructMatcher + Send + Sync>>,
-    submodule_store: Arc<Mutex<Box<dyn SubmoduleStore + Send + Sync>>>,
+    instruct_encoder: InstructEncoderImpl,
+    instruct_matcher: InstructMatcherImpl,
+    submodule_store: SubmoduleStoreImpl,
     module_operate_receiver: UnboundedReceiver<ModuleOperate>,
 ) -> Result<()> {
     let close_sender = CLOSE_SENDER.get().unwrap().upgrade().unwrap();
@@ -44,9 +41,9 @@ pub fn simple_submodule_manager_thread(
 }
 
 async fn start(
-    instruct_encoder: Arc<Box<dyn InstructEncoder + Send + Sync>>,
-    instruct_matcher: Arc<Box<dyn InstructMatcher + Send + Sync>>,
-    submodule_store: Arc<Mutex<Box<dyn SubmoduleStore + Send + Sync>>>,
+    instruct_encoder: InstructEncoderImpl,
+    instruct_matcher: InstructMatcherImpl,
+    submodule_store: SubmoduleStoreImpl,
     mut module_operate_receiver: UnboundedReceiver<ModuleOperate>,
 ) -> Result<()> {
     info!("Simple Submodule Manager Thread Start");
@@ -109,9 +106,9 @@ async fn start(
 }
 
 async fn update_submodule(
-    instruct_encoder: Arc<Box<dyn InstructEncoder + Send + Sync>>,
-    instruct_matcher: Arc<Box<dyn InstructMatcher + Send + Sync>>,
-    submodule_store: Arc<Mutex<Box<dyn SubmoduleStore + Send + Sync>>>,
+    instruct_encoder: InstructEncoderImpl,
+    instruct_matcher: InstructMatcherImpl,
+    submodule_store: SubmoduleStoreImpl,
     module_operate: ModuleOperate,
 ) -> Result<String> {
     info!(
@@ -119,8 +116,8 @@ async fn update_submodule(
         &module_operate.name
     );
     let mut new_instruct = HashMap::<String, Vec<f32>>::new();
-    let mut update_instruct_map = HashMap::<String, String>::new();
-    let mut remove_point_ids = Vec::<String>::new();
+    let mut update_instruct_map = HashMap::<String, PointPayload>::new();
+    let mut remove_point_ids = Vec::<PointPayload>::new();
     // 确认子模块指令新增的指令，获取去除指令的point_id，没有变化的指令直接获取point_id
     if let Some(submodule) = submodule_store
         .lock()
@@ -140,14 +137,16 @@ async fn update_submodule(
             }
             if submodule.default_instruct_map.len() > retain_instruct.len() {
                 for instruct in &retain_instruct {
-                    if let Some(point_id) = submodule.default_instruct_map.get(instruct.as_str()) {
-                        update_instruct_map.insert(instruct.to_string(), point_id.to_string());
+                    if let Some(point_payload) =
+                        submodule.default_instruct_map.get(instruct.as_str())
+                    {
+                        update_instruct_map.insert(instruct.to_string(), point_payload.clone());
                         submodule.default_instruct_map.remove(instruct.as_str());
                     }
                 }
             }
-            for (_, point_id) in submodule.default_instruct_map.iter() {
-                remove_point_ids.push(point_id.to_string())
+            for (_, point_payload) in submodule.default_instruct_map.iter() {
+                remove_point_ids.push(point_payload.clone())
             }
         }
     }
@@ -155,21 +154,21 @@ async fn update_submodule(
     for (instruct, _) in new_instruct.clone() {
         new_instruct.insert(instruct.to_string(), instruct_encoder.encode(&instruct)?);
     }
-    // 将新增的指令分配的point_id存入，然后在qdrant上移除需要删除指令对应的点，最后插入新增指令的点
+    // 将新增的指令负载点存入，然后在InstructMatcher上移除需要删除指令对应的点，最后插入新增指令的点
     let mut insert_points = Vec::<PointPayload>::new();
     for (instruct, encode_result) in new_instruct {
-        let id = Uuid::new_v4();
-        update_instruct_map.insert(instruct.to_string(), id.to_string());
-        insert_points.push(PointPayload {
-            uuid: id.to_string(),
+        let point_payload = PointPayload {
+            uuid: Uuid::new_v4().to_string(),
+            submodule_id: module_operate.name.to_string(),
             instruct: instruct.to_string(),
             encode: encode_result.clone(),
-        });
+        };
+        update_instruct_map.insert(instruct.to_string(), point_payload.clone());
+        insert_points.push(point_payload);
     }
-    instruct_matcher
-        .append_points(module_operate.name.to_string(), insert_points)
-        .await?;
-    instruct_matcher.remove_points(remove_point_ids).await?;
+    let mut matcher = instruct_matcher.lock().await;
+    matcher.append_points(insert_points).await?;
+    matcher.remove_points(remove_point_ids).await?;
     if let Some(submodule) = submodule_store
         .lock()
         .await
@@ -182,7 +181,7 @@ async fn update_submodule(
 }
 
 async fn update_submodule_heartbeat(
-    submodule_store: Arc<Mutex<Box<dyn SubmoduleStore + Send + Sync>>>,
+    submodule_store: SubmoduleStoreImpl,
     module_operate: ModuleOperate,
 ) -> Result<()> {
     debug!("Submodule {:?} Heartbeat", &module_operate.name);
@@ -199,12 +198,12 @@ async fn update_submodule_heartbeat(
 }
 
 async fn offline_submodule(
-    instruct_matcher: Arc<Box<dyn InstructMatcher + Send + Sync>>,
-    submodule_store: Arc<Mutex<Box<dyn SubmoduleStore + Send + Sync>>>,
+    instruct_matcher: InstructMatcherImpl,
+    submodule_store: SubmoduleStoreImpl,
     module_operate: ModuleOperate,
 ) -> Result<String> {
     info!("Offline Submodule {:?}", &module_operate.name);
-    let mut point_ids = Vec::<String>::new();
+    let mut point_ids = Vec::<PointPayload>::new();
     {
         if let Some(submodule) = submodule_store
             .lock()
@@ -212,25 +211,33 @@ async fn offline_submodule(
             .get(&module_operate.name)
             .await?
         {
-            for (_, point_id) in submodule.default_instruct_map.iter() {
-                point_ids.push(point_id.to_string());
+            for (_, point_payload) in submodule.default_instruct_map.iter() {
+                debug!(
+                    "Offline Submodule Instruct Points Payload: {:?}",
+                    &point_payload
+                );
+                point_ids.push(point_payload.clone());
             }
         }
     }
-    debug!("Offline Submodule Instruct Points Id: {:?}", &point_ids);
-    instruct_matcher.remove_points(point_ids).await?;
+    instruct_matcher
+        .lock()
+        .await
+        .remove_points(point_ids)
+        .await?;
     submodule_store
         .lock()
         .await
         .remove_submodule(&module_operate.name)
         .await?;
+    remove_submodule_public_key(&module_operate).await?;
     Ok(module_operate.name.to_string())
 }
 
 async fn register_submodule(
-    instruct_encoder: Arc<Box<dyn InstructEncoder + Send + Sync>>,
-    instruct_matcher: Arc<Box<dyn InstructMatcher + Send + Sync>>,
-    submodule_store: Arc<Mutex<Box<dyn SubmoduleStore + Send + Sync>>>,
+    instruct_encoder: InstructEncoderImpl,
+    instruct_matcher: InstructMatcherImpl,
+    submodule_store: SubmoduleStoreImpl,
     module_operate: ModuleOperate,
 ) -> Result<String> {
     info!("start register model：{:?}", &module_operate.name);
@@ -253,20 +260,23 @@ async fn register_submodule(
     let original_default_instruct_map = submodule.default_instruct_map.clone();
     for (instruct, _) in original_default_instruct_map.iter() {
         let encode_result = instruct_encoder.encode(instruct)?;
-        let id = Uuid::new_v4();
+        let point_payload = PointPayload {
+            encode: encode_result.clone(),
+            submodule_id: register_submodule_name.to_string(),
+            instruct: instruct.to_string(),
+            uuid: Uuid::new_v4().to_string(),
+        };
+        debug!(
+            "{:?} Default Instruct Point Payload: {:?}",
+            &module_operate.name, &point_payload
+        );
         submodule
             .default_instruct_map
-            .insert(instruct.to_string(), id.to_string());
-        points.push(PointPayload {
-            encode: encode_result.clone(),
-            instruct: instruct.to_string(),
-            uuid: id.to_string(),
-        });
+            .insert(instruct.to_string(), point_payload.clone());
+        points.push(point_payload);
     }
 
     submodule_store.lock().await.insert(submodule).await?;
-    instruct_matcher
-        .append_points(register_submodule_name.to_string(), points)
-        .await?;
+    instruct_matcher.lock().await.append_points(points).await?;
     Ok(register_submodule_name)
 }

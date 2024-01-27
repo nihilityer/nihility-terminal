@@ -1,19 +1,15 @@
-use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::Result;
 use nihility_common::{ModuleOperate, OperateType};
 use tokio::{select, spawn};
-use tokio::sync::Mutex;
 use tracing::{debug, error, info};
 
 use crate::core::core_thread::heartbeat_manager::HEARTBEAT_TIME;
-use crate::core::submodule_store::SubmoduleStore;
+use crate::core::SubmoduleStoreImpl;
 use crate::{CANCELLATION_TOKEN, CLOSE_SENDER, MODULE_OPERATE_SENDER};
 
-pub fn simple_heartbeat_manager_thread(
-    submodule_store: Arc<Mutex<Box<dyn SubmoduleStore + Send + Sync>>>,
-) -> Result<()> {
+pub fn simple_heartbeat_manager_thread(submodule_store: SubmoduleStoreImpl) -> Result<()> {
     let close_sender = CLOSE_SENDER.get().unwrap().upgrade().unwrap();
     spawn(async move {
         select! {
@@ -33,7 +29,7 @@ pub fn simple_heartbeat_manager_thread(
     Ok(())
 }
 
-async fn start(submodule_store: Arc<Mutex<Box<dyn SubmoduleStore + Send + Sync>>>) -> Result<()> {
+async fn start(submodule_store: SubmoduleStoreImpl) -> Result<()> {
     info!("Heartbeat Manager Thread Start");
     let mut interval = tokio::time::interval(Duration::from_secs(HEARTBEAT_TIME));
     loop {

@@ -4,29 +4,33 @@ use async_trait::async_trait;
 use crate::config::InstructMatcherConfig;
 
 pub mod grpc_qdrant;
+pub mod instant_distance;
 
 pub const ENCODE_SIZE_FIELD: &str = "encode_size";
 
+#[derive(Clone, Default, Debug)]
 pub struct PointPayload {
     pub encode: Vec<f32>,
+    pub submodule_id: String,
     pub instruct: String,
     pub uuid: String,
 }
 
-/// 所有子模块管理模块都需要实现此特征
+impl PartialEq for PointPayload {
+    fn eq(&self, other: &Self) -> bool {
+        self.encode.eq(&other.encode)
+    }
+}
+
 #[async_trait]
 pub trait InstructMatcher {
-    /// 初始化指令管理组件
     async fn init(instruct_matcher_config: &InstructMatcherConfig) -> Result<Self>
     where
         Self: Sized + Send + Sync;
 
-    /// 从指令管理组件中搜索匹配的子模块名称
-    async fn search(&self, encode: Vec<f32>) -> Result<String>;
+    async fn search(&self, point: Vec<f32>) -> Result<String>;
 
-    /// 批量加入子模块默认指令编码结果向量点
-    async fn append_points(&self, module_name: String, points: Vec<PointPayload>) -> Result<()>;
+    async fn append_points(&mut self, points: Vec<PointPayload>) -> Result<()>;
 
-    /// 批量移除子模块默认指令编码结果向量点
-    async fn remove_points(&self, points: Vec<String>) -> Result<()>;
+    async fn remove_points(&mut self, points: Vec<PointPayload>) -> Result<()>;
 }

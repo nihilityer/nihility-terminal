@@ -1,22 +1,17 @@
-use std::sync::Arc;
-
 use anyhow::Result;
 use nihility_common::InstructData::Text;
 use nihility_common::{InstructEntity, ResponseCode};
 use tokio::spawn;
 use tokio::sync::mpsc::UnboundedReceiver;
-use tokio::sync::Mutex;
 use tracing::{debug, error, info, warn};
 
-use crate::core::instruct_encoder::InstructEncoder;
-use crate::core::instruct_matcher::InstructMatcher;
-use crate::core::submodule_store::SubmoduleStore;
+use crate::core::{InstructEncoderImpl, InstructMatcherImpl, SubmoduleStoreImpl};
 use crate::{CANCELLATION_TOKEN, CLOSE_SENDER};
 
 pub fn simple_instruct_manager_thread(
-    instruct_encoder: Arc<Box<dyn InstructEncoder + Send + Sync>>,
-    instruct_matcher: Arc<Box<dyn InstructMatcher + Send + Sync>>,
-    submodule_store: Arc<Mutex<Box<dyn SubmoduleStore + Send + Sync>>>,
+    instruct_encoder: InstructEncoderImpl,
+    instruct_matcher: InstructMatcherImpl,
+    submodule_store: SubmoduleStoreImpl,
     instruct_receiver: UnboundedReceiver<InstructEntity>,
 ) -> Result<()> {
     let close_sender = CLOSE_SENDER.get().unwrap().upgrade().unwrap();
@@ -41,9 +36,9 @@ pub fn simple_instruct_manager_thread(
 }
 
 async fn start(
-    instruct_encoder: Arc<Box<dyn InstructEncoder + Send + Sync>>,
-    instruct_matcher: Arc<Box<dyn InstructMatcher + Send + Sync>>,
-    submodule_store: Arc<Mutex<Box<dyn SubmoduleStore + Send + Sync>>>,
+    instruct_encoder: InstructEncoderImpl,
+    instruct_matcher: InstructMatcherImpl,
+    submodule_store: SubmoduleStoreImpl,
     mut instruct_receiver: UnboundedReceiver<InstructEntity>,
 ) -> Result<()> {
     info!("Instruct Manager Thread Start");
@@ -56,7 +51,7 @@ async fn start(
             }
         }
 
-        match instruct_matcher.search(encoded_instruct).await {
+        match instruct_matcher.lock().await.search(encoded_instruct).await {
             Ok(module_name) => {
                 if let Some(module) = submodule_store.lock().await.get(&module_name).await? {
                     match module.client.text_instruct(instruct).await {

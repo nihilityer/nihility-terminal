@@ -100,12 +100,12 @@ impl InstructMatcher for GrpcQdrant {
         Ok(GrpcQdrant { qdrant_client })
     }
 
-    async fn search(&self, encode: Vec<f32>) -> Result<String> {
+    async fn search(&self, point: Vec<f32>) -> Result<String> {
         let mut search_result = Vec::<ScoredPoint>::new();
         {
             let search_req = SearchPoints {
                 collection_name: COLLECTION_NAME.to_string(),
-                vector: encode,
+                vector: point,
                 limit: 1,
                 with_payload: Some(WithPayloadSelector {
                     selector_options: Some(Enable(true)),
@@ -139,14 +139,17 @@ impl InstructMatcher for GrpcQdrant {
         return Err(anyhow!("Cannot Search Match Submodule By This Instruct"));
     }
 
-    async fn append_points(&self, module_name: String, points: Vec<PointPayload>) -> Result<()> {
+    async fn append_points(&mut self, points: Vec<PointPayload>) -> Result<()> {
+        if points.is_empty() {
+            return Ok(());
+        }
         let mut point_structs = Vec::<PointStruct>::new();
         // 创建公共部分负载
         let mut payload = HashMap::<String, Value>::new();
         payload.insert(
             MODULE_NAME.to_string(),
             Value {
-                kind: Some(StringValue(module_name.to_string())),
+                kind: Some(StringValue(points[0].submodule_id.to_string())),
             },
         );
         // 先将所有指令编码，之后统一插入，减少网络通信的损耗
@@ -170,11 +173,14 @@ impl InstructMatcher for GrpcQdrant {
         Ok(())
     }
 
-    async fn remove_points(&self, points: Vec<String>) -> Result<()> {
+    async fn remove_points(&mut self, points: Vec<PointPayload>) -> Result<()> {
+        if points.is_empty() {
+            return Ok(());
+        }
         let mut point_ids = Vec::<PointId>::new();
         for point in points {
             point_ids.push(PointId {
-                point_id_options: Some(PointIdOptions::Uuid(point.to_string())),
+                point_id_options: Some(PointIdOptions::Uuid(point.uuid.to_string())),
             })
         }
         self.qdrant_client

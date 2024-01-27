@@ -1,17 +1,14 @@
-use std::sync::Arc;
-
 use anyhow::Result;
 use nihility_common::{ManipulateData, ManipulateEntity, ManipulateType, ResponseCode};
 use tokio::spawn;
 use tokio::sync::mpsc::UnboundedReceiver;
-use tokio::sync::Mutex;
 use tracing::{debug, error, info};
 
-use crate::core::submodule_store::SubmoduleStore;
+use crate::core::SubmoduleStoreImpl;
 use crate::{CANCELLATION_TOKEN, CLOSE_SENDER};
 
 pub fn simple_manipulate_manager_thread(
-    submodule_store: Arc<Mutex<Box<dyn SubmoduleStore + Send + Sync>>>,
+    submodule_store: SubmoduleStoreImpl,
     manipulate_receiver: UnboundedReceiver<ManipulateEntity>,
 ) -> Result<()> {
     let close_sender = CLOSE_SENDER.get().unwrap().upgrade().unwrap();
@@ -28,15 +25,8 @@ pub fn simple_manipulate_manager_thread(
     Ok(())
 }
 
-/// 处理操作的接收和转发
-///
-/// 1、通过操作实体转发操作
-///
-/// 2、记录日志
-///
-/// 3、处理特定的错误
 async fn start(
-    submodule_store: Arc<Mutex<Box<dyn SubmoduleStore + Send + Sync>>>,
+    submodule_store: SubmoduleStoreImpl,
     mut manipulate_receiver: UnboundedReceiver<ManipulateEntity>,
 ) -> Result<()> {
     info!("Manipulate Manager Thread Start");

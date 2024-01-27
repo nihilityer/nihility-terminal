@@ -9,10 +9,7 @@ use figment::Figment;
 use nihility_common::{GrpcServerConfig, LogConfig};
 use serde::{Deserialize, Serialize};
 
-use crate::core::instruct_encoder::sentence_transformers;
 use crate::core::instruct_encoder::sentence_transformers::{MODULE_NAME, MODULE_PATH};
-use crate::core::instruct_matcher::grpc_qdrant::QDRANT_GRPC_ADDR_FIELD;
-use crate::core::instruct_matcher::ENCODE_SIZE_FIELD;
 
 const JSON_CONFIG_FILE_NAME: &str = "config.json";
 const TOML_CONFIG_FILE_NAME: &str = "config.toml";
@@ -81,8 +78,9 @@ pub enum InstructEncoderType {
 
 #[derive(Deserialize, Serialize, Default, Debug, Clone)]
 pub enum InstructMatcherType {
-    #[default]
     GrpcQdrant,
+    #[default]
+    InstantDistance,
 }
 
 #[derive(Deserialize, Serialize, Default, Debug, Clone)]
@@ -98,7 +96,7 @@ pub struct InstructEncoderConfig {
     pub config_map: HashMap<String, String>,
 }
 
-#[derive(Deserialize, Serialize, Debug, Clone)]
+#[derive(Deserialize, Serialize, Default, Debug, Clone)]
 pub struct InstructMatcherConfig {
     pub instruct_matcher_type: InstructMatcherType,
     pub config_map: HashMap<String, String>,
@@ -128,24 +126,6 @@ impl Default for InstructEncoderConfig {
         InstructEncoderConfig {
             instruct_encoder_type: InstructEncoderType::default(),
             ort_lib_path: ORT_LIB_PATH.to_string(),
-            config_map,
-        }
-    }
-}
-
-impl Default for InstructMatcherConfig {
-    fn default() -> Self {
-        let mut config_map = HashMap::<String, String>::new();
-        config_map.insert(
-            QDRANT_GRPC_ADDR_FIELD.to_string(),
-            "http://192.168.0.100:6334".to_string(),
-        );
-        config_map.insert(
-            ENCODE_SIZE_FIELD.to_string(),
-            sentence_transformers::ENCODE_SIZE.to_string(),
-        );
-        InstructMatcherConfig {
-            instruct_matcher_type: InstructMatcherType::default(),
             config_map,
         }
     }

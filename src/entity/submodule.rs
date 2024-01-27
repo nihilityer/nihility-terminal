@@ -3,14 +3,17 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use anyhow::{anyhow, Result};
 use nihility_common::{
-    ClientType, ConnectionType, GrpcClient, GrpcClientConfig, ModuleOperate, NihilityClient,
-    OperateType,
+    get_auth_id, ClientType, ConnectionType, GrpcClient, GrpcClientConfig, ModuleOperate,
+    NihilityClient, OperateType,
 };
 use tracing::debug;
 
+use crate::core::instruct_matcher::PointPayload;
+
 pub struct Submodule {
     pub name: String,
-    pub default_instruct_map: HashMap<String, String>,
+    pub auth_id: String,
+    pub default_instruct_map: HashMap<String, PointPayload>,
     pub connection_type: ConnectionType,
     pub client_type: ClientType,
     pub heartbeat_time: u64,
@@ -50,16 +53,19 @@ impl Submodule {
                                 client.connection_manipulate_server().await?;
                                 (client, ClientType::ManipulateType)
                             }
-                            ClientType::NotReceiveType => {
-                                (GrpcClient::init(GrpcClientConfig::default()), ClientType::ManipulateType)
-                            }
+                            ClientType::NotReceiveType => (
+                                GrpcClient::init(GrpcClientConfig::default()),
+                                ClientType::ManipulateType,
+                            ),
                         };
-                        let mut default_instruct_map = HashMap::<String, String>::new();
+                        let mut default_instruct_map = HashMap::<String, PointPayload>::new();
                         for instruct in &info.default_instruct {
-                            default_instruct_map.insert(instruct.to_string(), String::new());
+                            default_instruct_map
+                                .insert(instruct.to_string(), PointPayload::default());
                         }
                         Ok(Submodule {
                             name: module_operate.name.to_string(),
+                            auth_id: get_auth_id(module_operate)?,
                             default_instruct_map,
                             connection_type: ConnectionType::GrpcType,
                             client_type,
