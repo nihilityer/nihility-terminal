@@ -5,12 +5,14 @@ use crate::entity::submodule::Submodule;
 
 mod hash_map;
 
-pub use hash_map::HashMapSubmoduleStore;
 use crate::config::SubmoduleStoreConfig;
+pub use hash_map::HashMapSubmoduleStore;
 
 #[async_trait]
 pub trait SubmoduleStore {
-    async fn init(submodule_store_config: &SubmoduleStoreConfig) -> Result<Self> where Self: Sized + Send + Sync;
+    async fn init(submodule_store_config: &SubmoduleStoreConfig) -> Result<Self>
+    where
+        Self: Sized + Send + Sync;
     async fn insert(&mut self, submodule: Submodule) -> Result<()>;
     async fn get(&self, name: &String) -> Result<Option<&Submodule>>;
     async fn get_mut(&mut self, name: &String) -> Result<Option<&mut Submodule>>;

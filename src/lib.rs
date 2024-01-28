@@ -26,6 +26,7 @@ use crate::core::instruct_encoder::InstructEncoder;
 use crate::core::instruct_matcher::grpc_qdrant::GrpcQdrant;
 use crate::core::instruct_matcher::instant_distance::InstantDistance;
 use crate::core::instruct_matcher::InstructMatcher;
+pub use crate::core::instruct_matcher::ENCODE_SIZE_FIELD;
 use crate::core::submodule_store::{HashMapSubmoduleStore, SubmoduleStore};
 use crate::core::{NihilityCore, NihilityCoreBuilder};
 
