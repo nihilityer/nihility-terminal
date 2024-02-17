@@ -15,7 +15,7 @@ use crate::check::check;
 pub use crate::config::NihilityTerminalConfig;
 use crate::config::{
     HeartbeatManagerType, InstructEncoderType, InstructManagerType, InstructMatcherType,
-    ManipulateManagerType, SubmoduleManagerType, SubmoduleStoreType,
+    ManipulateManagerType, OperationRecorderType, SubmoduleManagerType, SubmoduleStoreType,
 };
 use crate::core::core_thread::heartbeat_manager::simple_heartbeat_manager_thread;
 use crate::core::core_thread::instruct_manager::simple_instruct_manager_thread;
@@ -27,6 +27,9 @@ use crate::core::instruct_matcher::grpc_qdrant::GrpcQdrant;
 use crate::core::instruct_matcher::instant_distance::InstantDistance;
 use crate::core::instruct_matcher::InstructMatcher;
 pub use crate::core::instruct_matcher::ENCODE_SIZE_FIELD;
+use crate::core::operation_recorder::{
+    LogOperationRecorder, OperationRecorder, SqliteOperationRecorder,
+};
 use crate::core::submodule_store::{HashMapSubmoduleStore, SubmoduleStore};
 use crate::core::{NihilityCore, NihilityCoreBuilder};
 
@@ -99,6 +102,21 @@ impl NihilityTerminal {
             match &summary_config.core.submodule_store.submodule_store_type {
                 SubmoduleStoreType::SimpleHashMap => Box::new(
                     HashMapSubmoduleStore::init(&summary_config.core.submodule_store).await?,
+                ),
+            },
+        );
+
+        core_builder.set_operation_recorder(
+            match &summary_config
+                .core
+                .operation_recorder
+                .operation_recorder_type
+            {
+                OperationRecorderType::Log => Box::new(
+                    LogOperationRecorder::init(&summary_config.core.operation_recorder).await?,
+                ),
+                OperationRecorderType::Sqlite => Box::new(
+                    SqliteOperationRecorder::init(&summary_config.core.operation_recorder).await?,
                 ),
             },
         );

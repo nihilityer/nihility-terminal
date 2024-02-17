@@ -4,16 +4,17 @@ use tokio::spawn;
 use tokio::sync::mpsc::UnboundedReceiver;
 use tracing::{debug, error, info};
 
-use crate::core::SubmoduleStoreImpl;
+use crate::core::{OperationRecorderImpl, SubmoduleStoreImpl};
 use crate::{CANCELLATION_TOKEN, CLOSE_SENDER};
 
 pub fn simple_manipulate_manager_thread(
     submodule_store: SubmoduleStoreImpl,
+    operation_recorder: OperationRecorderImpl,
     manipulate_receiver: UnboundedReceiver<ManipulateEntity>,
 ) -> Result<()> {
     let close_sender = CLOSE_SENDER.get().unwrap().upgrade().unwrap();
     spawn(async move {
-        if let Err(e) = start(submodule_store, manipulate_receiver).await {
+        if let Err(e) = start(submodule_store, operation_recorder, manipulate_receiver).await {
             error!("Manipulate Manager Thread Error: {}", e);
             CANCELLATION_TOKEN.cancel();
         }
@@ -27,11 +28,17 @@ pub fn simple_manipulate_manager_thread(
 
 async fn start(
     submodule_store: SubmoduleStoreImpl,
+    operation_recorder: OperationRecorderImpl,
     mut manipulate_receiver: UnboundedReceiver<ManipulateEntity>,
 ) -> Result<()> {
     info!("Manipulate Manager Thread Start");
     while let Some(manipulate) = manipulate_receiver.recv().await {
         info!("Get Manipulate：{:?}", &manipulate);
+        operation_recorder
+            .lock()
+            .await
+            .recorder_manipulate(&manipulate)
+            .await?;
         if let ManipulateType::OfflineType = &manipulate.info.manipulate_type {
             error!("Offline Type Manipulate Cannot Forward")
         }

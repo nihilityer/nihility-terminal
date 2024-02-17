@@ -5,13 +5,16 @@ use tokio::spawn;
 use tokio::sync::mpsc::UnboundedReceiver;
 use tracing::{debug, error, info, warn};
 
-use crate::core::{InstructEncoderImpl, InstructMatcherImpl, SubmoduleStoreImpl};
+use crate::core::{
+    InstructEncoderImpl, InstructMatcherImpl, OperationRecorderImpl, SubmoduleStoreImpl,
+};
 use crate::{CANCELLATION_TOKEN, CLOSE_SENDER};
 
 pub fn simple_instruct_manager_thread(
     instruct_encoder: InstructEncoderImpl,
     instruct_matcher: InstructMatcherImpl,
     submodule_store: SubmoduleStoreImpl,
+    operation_recorder: OperationRecorderImpl,
     instruct_receiver: UnboundedReceiver<InstructEntity>,
 ) -> Result<()> {
     let close_sender = CLOSE_SENDER.get().unwrap().upgrade().unwrap();
@@ -20,6 +23,7 @@ pub fn simple_instruct_manager_thread(
             instruct_encoder,
             instruct_matcher,
             submodule_store,
+            operation_recorder,
             instruct_receiver,
         )
         .await
@@ -39,11 +43,17 @@ async fn start(
     instruct_encoder: InstructEncoderImpl,
     instruct_matcher: InstructMatcherImpl,
     submodule_store: SubmoduleStoreImpl,
+    operation_recorder: OperationRecorderImpl,
     mut instruct_receiver: UnboundedReceiver<InstructEntity>,
 ) -> Result<()> {
     info!("Instruct Manager Thread Start");
     while let Some(instruct) = instruct_receiver.recv().await {
         info!("Get Instruct：{:?}", &instruct);
+        operation_recorder
+            .lock()
+            .await
+            .recorder_instruct(&instruct)
+            .await?;
         let mut encoded_instruct: Vec<f32> = Vec::new();
         match &instruct.instruct {
             Text(text) => {

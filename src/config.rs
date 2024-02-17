@@ -43,6 +43,7 @@ pub struct CoreConfig {
     pub instruct_matcher: InstructMatcherConfig,
     pub instruct_encoder: InstructEncoderConfig,
     pub submodule_store: SubmoduleStoreConfig,
+    pub operation_recorder: OperationRecorderConfig,
     pub auth_key_dir: String,
 }
 
@@ -89,6 +90,13 @@ pub enum SubmoduleStoreType {
     SimpleHashMap,
 }
 
+#[derive(Deserialize, Serialize, Default, Debug, Clone)]
+pub enum OperationRecorderType {
+    #[default]
+    Log,
+    Sqlite,
+}
+
 #[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct InstructEncoderConfig {
     pub instruct_encoder_type: InstructEncoderType,
@@ -105,6 +113,12 @@ pub struct InstructMatcherConfig {
 #[derive(Deserialize, Serialize, Default, Debug, Clone)]
 pub struct SubmoduleStoreConfig {
     pub submodule_store_type: SubmoduleStoreType,
+    pub config_map: HashMap<String, String>,
+}
+
+#[derive(Deserialize, Serialize, Default, Debug, Clone)]
+pub struct OperationRecorderConfig {
+    pub operation_recorder_type: OperationRecorderType,
     pub config_map: HashMap<String, String>,
 }
 

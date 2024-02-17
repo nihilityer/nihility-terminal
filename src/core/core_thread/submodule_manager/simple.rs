@@ -9,7 +9,9 @@ use tracing::{debug, error, info};
 use uuid::Uuid;
 
 use crate::core::instruct_matcher::PointPayload;
-use crate::core::{InstructEncoderImpl, InstructMatcherImpl, SubmoduleStoreImpl};
+use crate::core::{
+    InstructEncoderImpl, InstructMatcherImpl, OperationRecorderImpl, SubmoduleStoreImpl,
+};
 use crate::entity::submodule::Submodule;
 use crate::{CANCELLATION_TOKEN, CLOSE_SENDER};
 
@@ -17,6 +19,7 @@ pub fn simple_submodule_manager_thread(
     instruct_encoder: InstructEncoderImpl,
     instruct_matcher: InstructMatcherImpl,
     submodule_store: SubmoduleStoreImpl,
+    operation_recorder: OperationRecorderImpl,
     module_operate_receiver: UnboundedReceiver<ModuleOperate>,
 ) -> Result<()> {
     let close_sender = CLOSE_SENDER.get().unwrap().upgrade().unwrap();
@@ -25,6 +28,7 @@ pub fn simple_submodule_manager_thread(
             instruct_encoder,
             instruct_matcher,
             submodule_store,
+            operation_recorder,
             module_operate_receiver,
         )
         .await
@@ -44,10 +48,16 @@ async fn start(
     instruct_encoder: InstructEncoderImpl,
     instruct_matcher: InstructMatcherImpl,
     submodule_store: SubmoduleStoreImpl,
+    operation_recorder: OperationRecorderImpl,
     mut module_operate_receiver: UnboundedReceiver<ModuleOperate>,
 ) -> Result<()> {
     info!("Simple Submodule Manager Thread Start");
     while let Some(module_operate) = module_operate_receiver.recv().await {
+        operation_recorder
+            .lock()
+            .await
+            .recorder_module_operate(&module_operate)
+            .await?;
         match module_operate.operate_type {
             OperateType::Register => match register_submodule(
                 instruct_encoder.clone(),
