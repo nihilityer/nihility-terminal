@@ -34,7 +34,7 @@ async fn start(submodule_store: SubmoduleStoreImpl) -> Result<()> {
     let mut interval = tokio::time::interval(Duration::from_secs(HEARTBEAT_TIME));
     loop {
         interval.tick().await;
-        debug!("Make Sure The Submodule Heartbeat Is Normal");
+        debug!("Check Submodule Heartbeat");
         for name in submodule_store
             .lock()
             .await
