@@ -81,9 +81,9 @@ impl NihilityTerminal {
 
         core_builder.set_instruct_encoder(
             match &summary_config.core.instruct_encoder.instruct_encoder_type {
-                InstructEncoderType::SentenceTransformers => Box::new(SentenceTransformers::init(
-                    &summary_config.core.instruct_encoder,
-                )?),
+                InstructEncoderType::SentenceTransformers => Box::new(
+                    SentenceTransformers::init(&summary_config.core.instruct_encoder).await?,
+                ),
             },
         );
 

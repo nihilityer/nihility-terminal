@@ -1,15 +1,17 @@
 use anyhow::Result;
+use async_trait::async_trait;
 
 use crate::config::InstructEncoderConfig;
 
 pub mod sentence_transformers;
 
+#[async_trait]
 pub trait InstructEncoder {
-    fn init(instruct_encoder_config: &InstructEncoderConfig) -> Result<Self>
+    async fn init(instruct_encoder_config: &InstructEncoderConfig) -> Result<Self>
     where
         Self: Sized + Send + Sync;
 
-    fn encode(&self, input: &str) -> Result<Vec<f32>>;
+    async fn encode(&self, input: &str) -> Result<Vec<f32>>;
 
-    fn encode_size(&self) -> u64;
+    async fn encode_size(&self) -> u64;
 }

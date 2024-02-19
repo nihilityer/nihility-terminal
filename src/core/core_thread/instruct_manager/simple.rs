@@ -49,15 +49,11 @@ async fn start(
     info!("Instruct Manager Thread Start");
     while let Some(instruct) = instruct_receiver.recv().await {
         info!("Get Instruct：{:?}", &instruct);
-        operation_recorder
-            .lock()
-            .await
-            .recorder_instruct(&instruct)
-            .await?;
+        operation_recorder.recorder_instruct(&instruct).await?;
         let mut encoded_instruct: Vec<f32> = Vec::new();
         match &instruct.instruct {
             Text(text) => {
-                encoded_instruct.append(instruct_encoder.encode(text)?.as_mut());
+                encoded_instruct.append(instruct_encoder.encode(text).await?.as_mut());
             }
         }
 

@@ -54,8 +54,6 @@ async fn start(
     info!("Simple Submodule Manager Thread Start");
     while let Some(module_operate) = module_operate_receiver.recv().await {
         operation_recorder
-            .lock()
-            .await
             .recorder_module_operate(&module_operate)
             .await?;
         match module_operate.operate_type {
@@ -162,7 +160,10 @@ async fn update_submodule(
     }
     // 将新增指令编码
     for (instruct, _) in new_instruct.clone() {
-        new_instruct.insert(instruct.to_string(), instruct_encoder.encode(&instruct)?);
+        new_instruct.insert(
+            instruct.to_string(),
+            instruct_encoder.encode(&instruct).await?,
+        );
     }
     // 将新增的指令负载点存入，然后在InstructMatcher上移除需要删除指令对应的点，最后插入新增指令的点
     let mut insert_points = Vec::<PointPayload>::new();
@@ -269,7 +270,7 @@ async fn register_submodule(
     }
     let original_default_instruct_map = submodule.default_instruct_map.clone();
     for (instruct, _) in original_default_instruct_map.iter() {
-        let encode_result = instruct_encoder.encode(instruct)?;
+        let encode_result = instruct_encoder.encode(instruct).await?;
         let point_payload = PointPayload {
             encode: encode_result.clone(),
             submodule_id: register_submodule_name.to_string(),

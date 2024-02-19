@@ -21,7 +21,7 @@ static CORE: OnceLock<NihilityCore> = OnceLock::new();
 type InstructEncoderImpl = Arc<Box<dyn InstructEncoder + Send + Sync>>;
 type InstructMatcherImpl = Arc<Mutex<Box<dyn InstructMatcher + Send + Sync>>>;
 type SubmoduleStoreImpl = Arc<Mutex<Box<dyn SubmoduleStore + Send + Sync>>>;
-type OperationRecorderImpl = Arc<Mutex<Box<dyn OperationRecorder + Send + Sync>>>;
+type OperationRecorderImpl = Arc<Box<dyn OperationRecorder + Send + Sync>>;
 type HeartbeatManagerFn = dyn Fn(SubmoduleStoreImpl) -> Result<()>;
 type InstructManagerFn = dyn Fn(
     InstructEncoderImpl,
@@ -97,7 +97,7 @@ impl NihilityCore {
                     instruct_encoder: Arc::new(instruct_encoder),
                     instruct_matcher: Arc::new(Mutex::new(instruct_matcher)),
                     submodule_store: Arc::new(Mutex::new(submodule_store)),
-                    operation_recorder: Arc::new(Mutex::new(operation_recorder)),
+                    operation_recorder: Arc::new(operation_recorder),
                 };
                 core.run_heartbeat_manager_fn(heartbeat_manager_fn)?;
                 core.run_instruct_manager_fn(instruct_manager_fn, instruct_receiver)?;

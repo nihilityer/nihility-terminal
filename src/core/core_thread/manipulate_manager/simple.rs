@@ -34,11 +34,7 @@ async fn start(
     info!("Manipulate Manager Thread Start");
     while let Some(manipulate) = manipulate_receiver.recv().await {
         info!("Get Manipulate：{:?}", &manipulate);
-        operation_recorder
-            .lock()
-            .await
-            .recorder_manipulate(&manipulate)
-            .await?;
+        operation_recorder.recorder_manipulate(&manipulate).await?;
         if let ManipulateType::OfflineType = &manipulate.info.manipulate_type {
             error!("Offline Type Manipulate Cannot Forward")
         }

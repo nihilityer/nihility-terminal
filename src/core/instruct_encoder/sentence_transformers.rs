@@ -2,6 +2,7 @@ use std::ops::Deref;
 use std::panic::catch_unwind;
 
 use anyhow::{anyhow, Result};
+use async_trait::async_trait;
 use ndarray::{Array1, Axis};
 use ort::{inputs, CPUExecutionProvider, GraphOptimizationLevel, Session};
 use tokenizers::Tokenizer;
@@ -19,8 +20,9 @@ pub struct SentenceTransformers {
     pub tokenizer: Tokenizer,
 }
 
+#[async_trait]
 impl InstructEncoder for SentenceTransformers {
-    fn init(instruct_encoder_config: &InstructEncoderConfig) -> Result<Self>
+    async fn init(instruct_encoder_config: &InstructEncoderConfig) -> Result<Self>
     where
         Self: Sized + Send + Sync,
     {
@@ -56,7 +58,7 @@ impl InstructEncoder for SentenceTransformers {
         Ok(encoder)
     }
 
-    fn encode(&self, input: &str) -> Result<Vec<f32>> {
+    async fn encode(&self, input: &str) -> Result<Vec<f32>> {
         let encoding = self.tokenizer.encode(input, false).unwrap();
         debug!("Encoding: {:?}", &encoding);
 
@@ -107,7 +109,7 @@ impl InstructEncoder for SentenceTransformers {
         };
     }
 
-    fn encode_size(&self) -> u64 {
+    async fn encode_size(&self) -> u64 {
         ENCODE_SIZE
     }
 }
