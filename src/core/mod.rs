@@ -1,3 +1,5 @@
+use std::future::Future;
+use std::pin::Pin;
 use std::sync::{Arc, OnceLock};
 
 use anyhow::{anyhow, Result};
@@ -5,6 +7,7 @@ use nihility_common::{InstructEntity, ManipulateEntity, ModuleOperate};
 use tokio::sync::mpsc::UnboundedReceiver;
 use tokio::sync::Mutex;
 
+use crate::core::core_thread::heartbeat_manager_thread;
 use crate::core::instruct_encoder::InstructEncoder;
 use crate::core::instruct_matcher::InstructMatcher;
 use crate::core::operation_recorder::OperationRecorder;
@@ -22,7 +25,8 @@ type InstructEncoderImpl = Arc<Box<dyn InstructEncoder + Send + Sync>>;
 type InstructMatcherImpl = Arc<Mutex<Box<dyn InstructMatcher + Send + Sync>>>;
 type SubmoduleStoreImpl = Arc<Mutex<Box<dyn SubmoduleStore + Send + Sync>>>;
 type OperationRecorderImpl = Arc<Box<dyn OperationRecorder + Send + Sync>>;
-type HeartbeatManagerFn = dyn Fn(SubmoduleStoreImpl) -> Result<()>;
+type HeartbeatManagerFn =
+    dyn Fn(SubmoduleStoreImpl) -> Pin<Box<dyn Future<Output = Result<()>> + Send>> + Send;
 type InstructManagerFn = dyn Fn(
     InstructEncoderImpl,
     InstructMatcherImpl,
@@ -99,7 +103,7 @@ impl NihilityCore {
                     submodule_store: Arc::new(Mutex::new(submodule_store)),
                     operation_recorder: Arc::new(operation_recorder),
                 };
-                core.run_heartbeat_manager_fn(heartbeat_manager_fn)?;
+                heartbeat_manager_thread(heartbeat_manager_fn, core.submodule_store.clone())?;
                 core.run_instruct_manager_fn(instruct_manager_fn, instruct_receiver)?;
                 core.run_manipulate_manager_fn(manipulate_manager_fn, manipulate_receiver)?;
                 core.run_submodule_manager_fn(submodule_manager_fn, module_operate_receiver)?;
@@ -140,13 +144,6 @@ impl NihilityCore {
                 Err(anyhow!("Builder submodule_manager_fn Field Value Is None"))
             }
         }
-    }
-
-    fn run_heartbeat_manager_fn(
-        &self,
-        heartbeat_manager_fn: Box<HeartbeatManagerFn>,
-    ) -> Result<()> {
-        heartbeat_manager_fn(self.submodule_store.clone())
     }
 
     fn run_instruct_manager_fn(
@@ -234,11 +231,15 @@ impl NihilityCoreBuilder {
         self.module_operate_receiver = Some(module_operate_receiver)
     }
 
-    pub fn set_heartbeat_manager_fn(
+    pub fn set_heartbeat_manager_fn<Fut>(
         &mut self,
-        heartbeat_manager_fn: impl Fn(SubmoduleStoreImpl) -> Result<()> + 'static,
-    ) {
-        self.heartbeat_manager_fn = Some(Box::new(heartbeat_manager_fn))
+        heartbeat_manager_fn: impl Fn(SubmoduleStoreImpl) -> Fut + 'static + Send,
+    ) where
+        Fut: Future<Output = Result<()>> + Send + 'static,
+    {
+        self.heartbeat_manager_fn = Some(Box::new(move |x| {
+            Box::pin(heartbeat_manager_fn(x)) as Pin<Box<dyn Future<Output = Result<()>> + Send>>
+        }))
     }
 
     pub fn set_instruct_manager_fn(
