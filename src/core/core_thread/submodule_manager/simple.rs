@@ -3,7 +3,6 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use anyhow::{anyhow, Result};
 use nihility_common::{remove_submodule_public_key, ModuleOperate, OperateType};
-use tokio::spawn;
 use tokio::sync::mpsc::UnboundedReceiver;
 use tracing::{debug, error, info};
 use uuid::Uuid;
@@ -13,38 +12,8 @@ use crate::core::{
     InstructEncoderImpl, InstructMatcherImpl, OperationRecorderImpl, SubmoduleStoreImpl,
 };
 use crate::entity::submodule::Submodule;
-use crate::{CANCELLATION_TOKEN, CLOSE_SENDER};
 
-pub fn simple_submodule_manager_thread(
-    instruct_encoder: InstructEncoderImpl,
-    instruct_matcher: InstructMatcherImpl,
-    submodule_store: SubmoduleStoreImpl,
-    operation_recorder: OperationRecorderImpl,
-    module_operate_receiver: UnboundedReceiver<ModuleOperate>,
-) -> Result<()> {
-    let close_sender = CLOSE_SENDER.get().unwrap().upgrade().unwrap();
-    spawn(async move {
-        if let Err(e) = start(
-            instruct_encoder,
-            instruct_matcher,
-            submodule_store,
-            operation_recorder,
-            module_operate_receiver,
-        )
-        .await
-        {
-            error!("Simple Submodule Manager Thread Error: {}", e);
-            CANCELLATION_TOKEN.cancel();
-        }
-        close_sender
-            .send("Simple Submodule Manager Thread".to_string())
-            .await
-            .unwrap();
-    });
-    Ok(())
-}
-
-async fn start(
+pub async fn simple_submodule_manager_thread(
     instruct_encoder: InstructEncoderImpl,
     instruct_matcher: InstructMatcherImpl,
     submodule_store: SubmoduleStoreImpl,

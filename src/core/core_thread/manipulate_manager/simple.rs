@@ -1,32 +1,11 @@
 use anyhow::Result;
 use nihility_common::{ManipulateData, ManipulateEntity, ManipulateType, ResponseCode};
-use tokio::spawn;
 use tokio::sync::mpsc::UnboundedReceiver;
 use tracing::{debug, error, info};
 
 use crate::core::{OperationRecorderImpl, SubmoduleStoreImpl};
-use crate::{CANCELLATION_TOKEN, CLOSE_SENDER};
 
-pub fn simple_manipulate_manager_thread(
-    submodule_store: SubmoduleStoreImpl,
-    operation_recorder: OperationRecorderImpl,
-    manipulate_receiver: UnboundedReceiver<ManipulateEntity>,
-) -> Result<()> {
-    let close_sender = CLOSE_SENDER.get().unwrap().upgrade().unwrap();
-    spawn(async move {
-        if let Err(e) = start(submodule_store, operation_recorder, manipulate_receiver).await {
-            error!("Manipulate Manager Thread Error: {}", e);
-            CANCELLATION_TOKEN.cancel();
-        }
-        close_sender
-            .send("Manipulate Manager Thread".to_string())
-            .await
-            .unwrap();
-    });
-    Ok(())
-}
-
-async fn start(
+pub async fn simple_manipulate_manager_thread(
     submodule_store: SubmoduleStoreImpl,
     operation_recorder: OperationRecorderImpl,
     mut manipulate_receiver: UnboundedReceiver<ManipulateEntity>,

@@ -8,6 +8,9 @@ use tokio::sync::mpsc::UnboundedReceiver;
 use tokio::sync::Mutex;
 
 use crate::core::core_thread::heartbeat_manager_thread;
+use crate::core::core_thread::instruct_manager::instruct_manager_thread;
+use crate::core::core_thread::manipulate_manager::manipulate_manager_thread;
+use crate::core::core_thread::submodule_manager::submodule_manager_thread;
 use crate::core::instruct_encoder::InstructEncoder;
 use crate::core::instruct_matcher::InstructMatcher;
 use crate::core::operation_recorder::OperationRecorder;
@@ -28,24 +31,27 @@ type OperationRecorderImpl = Arc<Box<dyn OperationRecorder + Send + Sync>>;
 type HeartbeatManagerFn =
     dyn Fn(SubmoduleStoreImpl) -> Pin<Box<dyn Future<Output = Result<()>> + Send>> + Send;
 type InstructManagerFn = dyn Fn(
-    InstructEncoderImpl,
-    InstructMatcherImpl,
-    SubmoduleStoreImpl,
-    OperationRecorderImpl,
-    UnboundedReceiver<InstructEntity>,
-) -> Result<()>;
+        InstructEncoderImpl,
+        InstructMatcherImpl,
+        SubmoduleStoreImpl,
+        OperationRecorderImpl,
+        UnboundedReceiver<InstructEntity>,
+    ) -> Pin<Box<dyn Future<Output = Result<()>> + Send>>
+    + Send;
 type ManipulateManagerFn = dyn Fn(
-    SubmoduleStoreImpl,
-    OperationRecorderImpl,
-    UnboundedReceiver<ManipulateEntity>,
-) -> Result<()>;
+        SubmoduleStoreImpl,
+        OperationRecorderImpl,
+        UnboundedReceiver<ManipulateEntity>,
+    ) -> Pin<Box<dyn Future<Output = Result<()>> + Send>>
+    + Send;
 type SubmoduleManagerFn = dyn Fn(
-    InstructEncoderImpl,
-    InstructMatcherImpl,
-    SubmoduleStoreImpl,
-    OperationRecorderImpl,
-    UnboundedReceiver<ModuleOperate>,
-) -> Result<()>;
+        InstructEncoderImpl,
+        InstructMatcherImpl,
+        SubmoduleStoreImpl,
+        OperationRecorderImpl,
+        UnboundedReceiver<ModuleOperate>,
+    ) -> Pin<Box<dyn Future<Output = Result<()>> + Send>>
+    + Send;
 
 pub struct NihilityCore {
     instruct_encoder: InstructEncoderImpl,
@@ -104,9 +110,28 @@ impl NihilityCore {
                     operation_recorder: Arc::new(operation_recorder),
                 };
                 heartbeat_manager_thread(heartbeat_manager_fn, core.submodule_store.clone())?;
-                core.run_instruct_manager_fn(instruct_manager_fn, instruct_receiver)?;
-                core.run_manipulate_manager_fn(manipulate_manager_fn, manipulate_receiver)?;
-                core.run_submodule_manager_fn(submodule_manager_fn, module_operate_receiver)?;
+                instruct_manager_thread(
+                    instruct_manager_fn,
+                    core.instruct_encoder.clone(),
+                    core.instruct_matcher.clone(),
+                    core.submodule_store.clone(),
+                    core.operation_recorder.clone(),
+                    instruct_receiver,
+                )?;
+                manipulate_manager_thread(
+                    manipulate_manager_fn,
+                    core.submodule_store.clone(),
+                    core.operation_recorder.clone(),
+                    manipulate_receiver,
+                )?;
+                submodule_manager_thread(
+                    submodule_manager_fn,
+                    core.instruct_encoder.clone(),
+                    core.instruct_matcher.clone(),
+                    core.submodule_store.clone(),
+                    core.operation_recorder.clone(),
+                    module_operate_receiver,
+                )?;
                 CORE.get_or_init(|| core);
                 Ok(())
             }
@@ -144,46 +169,6 @@ impl NihilityCore {
                 Err(anyhow!("Builder submodule_manager_fn Field Value Is None"))
             }
         }
-    }
-
-    fn run_instruct_manager_fn(
-        &self,
-        instruct_manager_fn: Box<InstructManagerFn>,
-        receiver: UnboundedReceiver<InstructEntity>,
-    ) -> Result<()> {
-        instruct_manager_fn(
-            self.instruct_encoder.clone(),
-            self.instruct_matcher.clone(),
-            self.submodule_store.clone(),
-            self.operation_recorder.clone(),
-            receiver,
-        )
-    }
-
-    fn run_manipulate_manager_fn(
-        &self,
-        manipulate_manager_fn: Box<ManipulateManagerFn>,
-        receiver: UnboundedReceiver<ManipulateEntity>,
-    ) -> Result<()> {
-        manipulate_manager_fn(
-            self.submodule_store.clone(),
-            self.operation_recorder.clone(),
-            receiver,
-        )
-    }
-
-    fn run_submodule_manager_fn(
-        &self,
-        submodule_manager_fn: Box<SubmoduleManagerFn>,
-        receiver: UnboundedReceiver<ModuleOperate>,
-    ) -> Result<()> {
-        submodule_manager_fn(
-            self.instruct_encoder.clone(),
-            self.instruct_matcher.clone(),
-            self.submodule_store.clone(),
-            self.operation_recorder.clone(),
-            receiver,
-        )
     }
 }
 
@@ -242,7 +227,7 @@ impl NihilityCoreBuilder {
         }))
     }
 
-    pub fn set_instruct_manager_fn(
+    pub fn set_instruct_manager_fn<Fut>(
         &mut self,
         instruct_manager_fn: impl Fn(
                 InstructEncoderImpl,
@@ -250,25 +235,37 @@ impl NihilityCoreBuilder {
                 SubmoduleStoreImpl,
                 OperationRecorderImpl,
                 UnboundedReceiver<InstructEntity>,
-            ) -> Result<()>
-            + 'static,
-    ) {
-        self.instruct_manager_fn = Some(Box::new(instruct_manager_fn))
+            ) -> Fut
+            + 'static
+            + Send,
+    ) where
+        Fut: Future<Output = Result<()>> + Send + 'static,
+    {
+        self.instruct_manager_fn = Some(Box::new(move |a, b, c, d, e| {
+            Box::pin(instruct_manager_fn(a, b, c, d, e))
+                as Pin<Box<dyn Future<Output = Result<()>> + Send>>
+        }))
     }
 
-    pub fn set_manipulate_manager_fn(
+    pub fn set_manipulate_manager_fn<Fut>(
         &mut self,
         manipulate_manager_fn: impl Fn(
                 SubmoduleStoreImpl,
                 OperationRecorderImpl,
                 UnboundedReceiver<ManipulateEntity>,
-            ) -> Result<()>
-            + 'static,
-    ) {
-        self.manipulate_manager_fn = Some(Box::new(manipulate_manager_fn))
+            ) -> Fut
+            + 'static
+            + Send,
+    ) where
+        Fut: Future<Output = Result<()>> + Send + 'static,
+    {
+        self.manipulate_manager_fn = Some(Box::new(move |a, b, c| {
+            Box::pin(manipulate_manager_fn(a, b, c))
+                as Pin<Box<dyn Future<Output = Result<()>> + Send>>
+        }))
     }
 
-    pub fn set_submodule_manager_fn(
+    pub fn set_submodule_manager_fn<Fut>(
         &mut self,
         submodule_manager_fn: impl Fn(
                 InstructEncoderImpl,
@@ -276,9 +273,15 @@ impl NihilityCoreBuilder {
                 SubmoduleStoreImpl,
                 OperationRecorderImpl,
                 UnboundedReceiver<ModuleOperate>,
-            ) -> Result<()>
-            + 'static,
-    ) {
-        self.submodule_manager_fn = Some(Box::new(submodule_manager_fn))
+            ) -> Fut
+            + 'static
+            + Send,
+    ) where
+        Fut: Future<Output = Result<()>> + Send + 'static,
+    {
+        self.submodule_manager_fn = Some(Box::new(move |a, b, c, d, e| {
+            Box::pin(submodule_manager_fn(a, b, c, d, e))
+                as Pin<Box<dyn Future<Output = Result<()>> + Send>>
+        }))
     }
 }
