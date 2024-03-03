@@ -20,11 +20,11 @@ async-trait = "0.1"
 serde = { version = "1.0", features = ["derive"] }
 toml = "0.8"
 ndarray = "0.15"
-ort = { version = "2.0.0-alpha.4", features = ["half", "load-dynamic", "ndarray"], default-features = false }
+ort = { version = "2.0.0-rc.0", features = ["half", "load-dynamic", "ndarray"], default-features = false }
 tokenizers = "0.15"
 figment = { version = "0.10", features = ["json", "toml", "yaml"] }
 qdrant-client = { version = "1.7.0" }
-nihility-common = { git = "https://github.com/nihilityer/nihility-common", tag = "v0.3.9" }
+nihility-common = { git = "https://github.com/nihilityer/nihility-common", tag = "v0.3.12" }
 serde_json = "1.0"
 uuid = { version = "1.7", features = ["v4", "fast-rng", "macro-diagnostics"] }
 lazy_static = "1.4"

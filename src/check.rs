@@ -12,25 +12,25 @@ const _SENTENCE_TRANSFORMERS_TOKENIZER_URL: &str = "https://www.modelscope.cn/ap
 const _SENTENCE_TRANSFORMERS_MODEL_URL: &str = "https://www.modelscope.cn/api/v1/models/Xorbits/bge-small-zh/repo?Revision=master&FilePath=pytorch_model.bin";
 
 #[cfg(all(target_os = "windows", target_arch = "x86_64"))]
-const ORT_LIB_DOWNLOAD_FILE_NAME: &str = "onnxruntime-win-x64-1.16.3.zip";
+const ORT_LIB_DOWNLOAD_FILE_NAME: &str = "onnxruntime-win-x64-1.17.1.zip";
 #[cfg(all(target_os = "windows", target_arch = "x86_64"))]
-const ORT_LIB_NAME_IN_ZIP: &str = "onnxruntime-win-x64-1.16.3/lib/onnxruntime.dll";
+const ORT_LIB_NAME_IN_ZIP: &str = "onnxruntime-win-x64-1.17.1/lib/onnxruntime.dll";
 #[cfg(all(target_os = "windows", target_arch = "x86_64"))]
-const ORT_LIB_DOWNLOAD_URL: &str = "https://github.com/microsoft/onnxruntime/releases/download/v1.16.3/onnxruntime-win-x64-1.16.3.zip";
+const ORT_LIB_DOWNLOAD_URL: &str = "https://github.com/microsoft/onnxruntime/releases/download/v1.17.1/onnxruntime-win-x64-1.17.1.zip";
 #[cfg(all(target_os = "windows", target_arch = "x86_64"))]
-const ORT_LIB_ZIP_FILE_SIZE: usize = 55808388;
+const ORT_LIB_ZIP_FILE_SIZE: usize = 61193481;
 #[cfg(all(target_os = "windows", target_arch = "x86_64"))]
-const ORT_LIB_ZIP_FILE_HASH: &str = "855cc3f9f354c2acd472a066118a86b84c7b8940f098acef2d2d239af0a3c69fb32026d4ba4b86c46848a849f963691f94751df9004efa817fdcea48ec9cb4e6";
+const ORT_LIB_ZIP_FILE_HASH: &str = "3d0d5fb5de7f0fa35d63a71578702746f84d04335428191e20b931d6d272d5793d9169732ee1f9f42cd96dc3e36a833d6c56cb07aadb4f14202a9119f67ea903";
 #[cfg(all(target_os = "windows", target_arch = "x86"))]
-const ORT_LIB_DOWNLOAD_FILE_NAME: &str = "onnxruntime-win-x86-1.16.3.zip";
+const ORT_LIB_DOWNLOAD_FILE_NAME: &str = "onnxruntime-win-x86-1.17.1.zip";
 #[cfg(all(target_os = "windows", target_arch = "x86"))]
-const ORT_LIB_NAME_IN_ZIP: &str = "onnxruntime-win-x86-1.16.3/lib/onnxruntime.dll";
+const ORT_LIB_NAME_IN_ZIP: &str = "onnxruntime-win-x86-1.17.1/lib/onnxruntime.dll";
 #[cfg(all(target_os = "windows", target_arch = "x86"))]
-const ORT_LIB_DOWNLOAD_URL: &str = "https://github.com/microsoft/onnxruntime/releases/download/v1.16.3/onnxruntime-win-x86-1.16.3.zip";
+const ORT_LIB_DOWNLOAD_URL: &str = "https://github.com/microsoft/onnxruntime/releases/download/v1.17.1/onnxruntime-win-x86-1.17.1.zip";
 #[cfg(all(target_os = "windows", target_arch = "x86"))]
-const ORT_LIB_ZIP_FILE_SIZE: usize = 54872219;
+const ORT_LIB_ZIP_FILE_SIZE: usize = 60244610;
 #[cfg(all(target_os = "windows", target_arch = "x86"))]
-const ORT_LIB_ZIP_FILE_HASH: &str = "66335c3c16ef90a0ecf4e8f6dc314903e91e790b829c17de913415579a123f7b15af86935ef8bfc4314a7e3057fe07d1443ef1dceec157384b34fd3b0e94986c";
+const ORT_LIB_ZIP_FILE_HASH: &str = "974e24550c0d4c54b2672b4626b978928d554651b8c715d1d44412b5ddb751d724cf8179e0e58de975c8a2b6819212c024172b24fd08b8f97d601d36f1a601f0";
 
 pub fn check() -> Result<()> {
     if !Path::new(ORT_LIB_PATH).exists() {
