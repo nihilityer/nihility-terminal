@@ -4,6 +4,7 @@ use tokio::{select, signal};
 use tracing::info;
 
 use nihility_terminal::{NihilityTerminal, NihilityTerminalConfig};
+use nihility_terminal::check::check;
 
 #[tokio::main]
 pub async fn main() {
@@ -20,6 +21,7 @@ pub async fn main() {
      /:/  /      \/__/         /:/  /      \/__/        \:\__\   \/__/                                    \:\__\        |:|  |
      \/__/                     \/__/                     \/__/                                             \/__/         \|__|    "#
     );
+    check().expect("Check Lib Or Model File Fail");
     let (shutdown_se, mut shutdown_re) = mpsc::channel::<String>(4);
     let cancellation_token = NihilityTerminal::get_cancellation_token();
     NihilityTerminal::set_close_sender(shutdown_se.downgrade());

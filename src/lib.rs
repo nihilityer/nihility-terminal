@@ -61,8 +61,6 @@ impl NihilityTerminal {
     pub async fn start(summary_config: NihilityTerminalConfig) -> Result<()> {
         core_authentication_core_init(&summary_config.core.auth_key_dir)?;
 
-        check()?;
-
         let (module_operate_se, module_operate_re) = mpsc::unbounded_channel::<ModuleOperate>();
         let (instruct_se, instruct_re) = mpsc::unbounded_channel::<InstructEntity>();
         let (manipulate_se, manipulate_re) = mpsc::unbounded_channel::<ManipulateEntity>();
@@ -138,10 +136,6 @@ impl NihilityTerminal {
         });
 
         NihilityCore::build(core_builder)?;
-
-        drop(instruct_se);
-        drop(manipulate_se);
-        drop(module_operate_se);
 
         Ok(())
     }
